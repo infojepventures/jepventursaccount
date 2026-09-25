@@ -31,7 +31,7 @@ export async function generatePdf(
       const cur = (await tx.get(ref)).data() as ClaimDoc | undefined;
       if (!cur || cur.pdf.requestId !== requestId) return { superseded: true as const };
       tx.update(ref, {
-        pdf: { status: 'ready', requestId, driveFileId: newId, fileName, error: null },
+        pdf: { status: 'ready', requestId, requestedAt: cur.pdf.requestedAt, driveFileId: newId, fileName, error: null },
         updatedAt: Timestamp.fromDate(deps.now()),
       });
       return { superseded: false as const, oldId: cur.pdf.driveFileId };

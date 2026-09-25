@@ -1,3 +1,4 @@
+import { Timestamp } from 'firebase-admin/firestore';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { UserDoc } from '@jep/shared';
 import { COL, getClaim } from '../../lib/firestore';
@@ -20,7 +21,9 @@ describe('submitClaim (new)', () => {
     expect(c.totalCents).toBe(15000);
     expect(c.applicant).toEqual({ uid: 'alice', name: 'User alice', position: 'Executive' });
     expect(c.attachments.map((a) => a.driveFileId)).toEqual(attachmentIds);
-    expect(c.pdf).toEqual({ status: 'generating', requestId: 'req_1', driveFileId: null, fileName: null, error: null });
+    expect(c.pdf).toEqual({
+      status: 'generating', requestId: 'req_1', requestedAt: Timestamp.fromDate(t.deps.now()), driveFileId: null, fileName: null, error: null,
+    });
     expect(c.history.map((h) => h.action)).toEqual(['submit']);
     expect(c.sheetSynced).toBe(true);
     expect(t.drive.folderPath(c.attachmentsFolderId)).toBe(`JEP Claims/2026/_attachments/${claimId}`);
@@ -87,6 +90,54 @@ describe('submitClaim (new)', () => {
     await expect(
       uploadFiles(t, alice, newClaimId(t.deps), [{ name: 'a.gif', mimeType: 'image/gif', data: new Uint8Array(5) }]),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+});
+
+describe('submitClaim (new, idempotent retry)', () => {
+  it('retrying the same submit returns the claimId and leaves the claim unchanged', async () => {
+    const t = makeTestDeps();
+    const alice = await seedActor(t.deps, 'alice');
+    const { claimId, attachmentIds } = await submitNewClaim(t, alice);
+    const before = (await getClaim(t.deps.db, claimId))!;
+
+    const req = {
+      claimId, items: [{ description: 'Item 1', amountCents: 1050 }, { description: 'Item 2', amountCents: 13950 }],
+      payment: BANK, attachmentIds, resubmit: false, saveBankToProfile: false,
+    };
+    await expect(submitClaim(t.deps, alice, req)).resolves.toEqual({ claimId });
+
+    const after = (await getClaim(t.deps.db, claimId))!;
+    expect(after).toEqual(before);
+    expect(after.history).toHaveLength(1);
+    expect(t.triggered).toHaveLength(1);
+  });
+
+  it('refuses another user submitting the same claimId', async () => {
+    const t = makeTestDeps();
+    const alice = await seedActor(t.deps, 'alice');
+    const bob = await seedActor(t.deps, 'bob');
+    const { claimId, attachmentIds } = await submitNewClaim(t, alice);
+    await expect(
+      submitClaim(t.deps, bob, {
+        claimId, items: [{ description: 'x', amountCents: 100 }], payment: BANK,
+        attachmentIds, resubmit: false, saveBankToProfile: false,
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
+  it('handles a concurrent double-submit race the same as a sequential retry', async () => {
+    const t = makeTestDeps();
+    const alice = await seedActor(t.deps, 'alice');
+    const claimId = newClaimId(t.deps);
+    const ids = await uploadFiles(t, alice, claimId, [jpgFile()]);
+    const req = {
+      claimId, items: [{ description: 'x', amountCents: 100 }], payment: BANK,
+      attachmentIds: ids, resubmit: false, saveBankToProfile: false,
+    };
+    const results = await Promise.all([submitClaim(t.deps, alice, req), submitClaim(t.deps, alice, req)]);
+    expect(results).toEqual([{ claimId }, { claimId }]);
+    const c = (await getClaim(t.deps.db, claimId))!;
+    expect(c.history).toHaveLength(1);
   });
 });
 

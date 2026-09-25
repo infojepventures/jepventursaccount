@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import {
-  isValidClaimId, isValidYmd,
+  isValidClaimId, isValidYmd, PDF_STUCK_AFTER_MS,
   type ClaimDoc, type ClaimIdRequest, type HistoryAction, type MarkPaidRequest, type StatusResponse,
 } from '@jep/shared';
 import { assertAdmin, type Actor } from '../actor';
@@ -61,9 +61,12 @@ export async function regeneratePdf(deps: Deps, actor: Actor, req: ClaimIdReques
   const requestId = deps.newId();
   await transition(deps, req?.claimId, (cur, now) => {
     assertCan('regenerate_pdf', cur, actor);
-    if (cur.pdf.status !== 'failed') throw fail.statusChanged();
+    const stuckGenerating =
+      cur.pdf.status === 'generating' &&
+      (!cur.pdf.requestedAt || now.toMillis() - cur.pdf.requestedAt.toMillis() > PDF_STUCK_AFTER_MS);
+    if (cur.pdf.status !== 'failed' && !stuckGenerating) throw fail.statusChanged();
     return {
-      pdf: { ...cur.pdf, status: 'generating', requestId, error: null },
+      pdf: { ...cur.pdf, status: 'generating', requestId, requestedAt: now, error: null },
       history: history(cur, actor, 'pdf_regenerate', now),
     };
   });

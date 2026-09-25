@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { PDF_STUCK_AFTER_MS } from '@jep/shared';
 import { getClaim } from '../../lib/firestore';
 import { cancelClaim, markPaid, regeneratePdf } from '../../lib/services/claimActions';
 import { markPdfFailed } from '../../lib/services/pdfTrigger';
@@ -68,6 +69,21 @@ describe('regeneratePdf', () => {
     expect(c.pdf.status).toBe('generating');
     expect(c.pdf.error).toBeNull();
     expect(t.triggered.at(-1)).toEqual({ claimId, requestId: c.pdf.requestId });
+    expect(c.history.at(-1)?.action).toBe('pdf_regenerate');
+  });
+
+  it('refuses a fresh generating PDF but allows it once it looks stuck', async () => {
+    const { t, alice } = await setup();
+    const { claimId } = await submitNewClaim(t, alice);
+    // Still 'generating' and fresh: refused.
+    await expect(regeneratePdf(t.deps, alice, { claimId })).rejects.toMatchObject({ code: 'STATUS_CHANGED' });
+
+    // Move the clock 21 minutes past the original requestedAt: now allowed.
+    t.setNow(new Date(t.deps.now().getTime() + PDF_STUCK_AFTER_MS + 60_000));
+    expect(await regeneratePdf(t.deps, alice, { claimId })).toEqual({ ok: true });
+
+    const c = (await getClaim(t.deps.db, claimId))!;
+    expect(c.pdf.status).toBe('generating');
     expect(c.history.at(-1)?.action).toBe('pdf_regenerate');
   });
 });

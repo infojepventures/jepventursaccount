@@ -46,7 +46,7 @@ export async function reviewClaim(deps: Deps, actor: Actor, req: ReviewClaimRequ
         status: 'approved',
         refNo,
         review,
-        pdf: { ...cur.pdf, status: 'generating', requestId, error: null },
+        pdf: { ...cur.pdf, status: 'generating', requestId, requestedAt: now, error: null },
         history: [...cur.history, { action: 'approve', byUid: actor.uid, byName: actor.name, at: now, note: refNo }],
         updatedAt: now,
       });

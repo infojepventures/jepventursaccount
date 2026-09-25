@@ -16,7 +16,7 @@ const claim: ClaimDoc = {
   payment: { bankName: 'Maybank', accountHolder: 'Tan Ah Kow', accountNumber: '0123 4567' },
   attachments: [],
   attachmentsFolderId: 'FOLDER1',
-  pdf: { status: 'ready', requestId: 'r', driveFileId: 'PDF1', fileName: 'x.pdf', error: null },
+  pdf: { status: 'ready', requestId: 'r', requestedAt: ts('2026-09-25T04:00:00Z'), driveFileId: 'PDF1', fileName: 'x.pdf', error: null },
   review: { byUid: 'a1', byName: 'Boss', at: ts('2026-09-26T02:00:00Z'), reason: null },
   paidInfo: { byUid: 'a1', byName: 'Boss', at: ts('2026-09-27T02:00:00Z'), paidDate: '2026-09-27', reference: 'IBG123' },
   history: [],

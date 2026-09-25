@@ -28,10 +28,15 @@ export interface Attachment {
   size: number;
 }
 
+/** A 'generating' PDF is considered stuck once it is this old (or requestedAt is missing). */
+export const PDF_STUCK_AFTER_MS = 20 * 60 * 1000;
+
 export interface PdfInfo {
   status: PdfStatus;
   /** Identifies the latest generation request; stale background runs compare against it. */
   requestId: string;
+  /** Set whenever status is set to 'generating'; used to detect a stuck background run. */
+  requestedAt: TimestampLike | null;
   driveFileId: string | null;
   fileName: string | null;
   error: string | null;

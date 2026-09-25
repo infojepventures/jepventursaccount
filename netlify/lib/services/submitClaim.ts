@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import {
-  draftRefNo, formatYyyyMm, isAllowedMime, isValidClaimId, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS, MIN_ATTACHMENTS,
+  draftRefNo, isAllowedMime, isValidClaimId, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS, MIN_ATTACHMENTS,
   sumCents, validateBank, validateItems,
   type Attachment, type BankDetails, type ClaimDoc, type ClaimItem, type HistoryAction, type HistoryEntry,
   type SubmitClaimRequest, type SubmitClaimResponse,
@@ -8,9 +8,8 @@ import {
 import type { Actor } from '../actor';
 import { assertCan } from '../claimAccess';
 import type { Deps } from '../deps';
-import { fail } from '../errors';
-import { claimRef, getClaim, userRef } from '../firestore';
-import { findAttachmentsFolder } from './attachmentsFolder';
+import { fail, isAlreadyExists } from '../errors';
+import { claimRef, COL, getClaim, userRef } from '../firestore';
 import { startPdf } from './pdfTrigger';
 import { syncClaimToSheet } from './sheetSync';
 
@@ -38,30 +37,37 @@ export async function submitClaim(deps: Deps, actor: Actor, req: SubmitClaimRequ
   };
 
   const existing = await getClaim(deps.db, req.claimId);
+
+  // Idempotent retry: the client resubmitted the same new-claim request (e.g. a network retry).
+  if (!req.resubmit && existing) {
+    if (existing.applicant.uid === actor.uid) return { claimId: req.claimId };
+    throw fail.forbidden();
+  }
+
   let folderId: string;
   if (req.resubmit) {
     if (!existing) throw fail.notFound('Claim not found');
     assertCan('resubmit', existing, actor);
     folderId = existing.attachmentsFolderId;
   } else {
-    if (existing) throw fail.invalid('This claim was already submitted');
-    const year = formatYyyyMm(deps.now()).slice(0, 4);
-    const found = await findAttachmentsFolder(deps, req.claimId, [year, String(Number(year) - 1)]);
-    if (!found) throw fail.invalid('Attachments were not uploaded for this claim');
-    folderId = found;
+    const folderSnap = await deps.db.collection(COL.uploadFolders).doc(req.claimId).get();
+    if (!folderSnap.exists) throw fail.invalid('Attachments were not uploaded for this claim');
+    const bound = folderSnap.data() as { uid: string; folderId: string };
+    if (bound.uid !== actor.uid) throw fail.forbidden();
+    folderId = bound.folderId;
   }
 
+  const metas = await Promise.all(ids.map((id) => deps.drive.getFile(id)));
   const attachments: Attachment[] = [];
-  for (const id of ids) {
-    const meta = await deps.drive.getFile(id);
+  metas.forEach((meta, i) => {
     if (!meta || meta.trashed || !meta.parents.includes(folderId)) {
       throw fail.invalid('An attachment does not belong to this claim. Please re-upload it.');
     }
     if (!isAllowedMime(meta.mimeType) || meta.size <= 0 || meta.size > MAX_ATTACHMENT_BYTES) {
       throw fail.invalid(`${meta.name}: file type or size is not allowed`);
     }
-    attachments.push({ driveFileId: meta.id, name: meta.name, mimeType: meta.mimeType, size: meta.size });
-  }
+    attachments[i] = { driveFileId: meta.id, name: meta.name, mimeType: meta.mimeType, size: meta.size };
+  });
 
   const now = Timestamp.fromDate(deps.now());
   const requestId = deps.newId();
@@ -81,7 +87,7 @@ export async function submitClaim(deps: Deps, actor: Actor, req: SubmitClaimRequ
         payment,
         attachments,
         review: null,
-        pdf: { ...cur.pdf, status: 'generating', requestId, error: null },
+        pdf: { ...cur.pdf, status: 'generating', requestId, requestedAt: now, error: null },
         history: [...cur.history, entry('resubmit')],
         resubmittedAt: now,
         updatedAt: now,
@@ -102,7 +108,7 @@ export async function submitClaim(deps: Deps, actor: Actor, req: SubmitClaimRequ
       payment,
       attachments,
       attachmentsFolderId: folderId,
-      pdf: { status: 'generating', requestId, driveFileId: null, fileName: null, error: null },
+      pdf: { status: 'generating', requestId, requestedAt: now, driveFileId: null, fileName: null, error: null },
       review: null,
       paidInfo: null,
       history: [entry('submit')],
@@ -112,7 +118,15 @@ export async function submitClaim(deps: Deps, actor: Actor, req: SubmitClaimRequ
       createdAt: now,
       updatedAt: now,
     };
-    await ref.create(doc);
+    try {
+      await ref.create(doc);
+    } catch (e) {
+      if (!isAlreadyExists(e)) throw e;
+      // Lost a create race against a concurrent identical request: fall back to the same idempotency check.
+      const raced = await getClaim(deps.db, req.claimId);
+      if (raced?.applicant.uid === actor.uid) return { claimId: req.claimId };
+      throw fail.forbidden();
+    }
   }
 
   if (req.saveBankToProfile) await userRef(deps.db, actor.uid).update({ bank: payment, updatedAt: now });
