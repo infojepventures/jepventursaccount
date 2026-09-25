@@ -49,7 +49,9 @@ export async function generatePdf(
     return 'done';
   } catch (e) {
     console.error('[generatePdf] failed', claimId, e);
-    if (uploadedId) await deps.drive.trash(uploadedId).catch(() => undefined);
+    if (uploadedId) {
+      await deps.drive.trash(uploadedId).catch((e2) => console.error('[generatePdf] trash on failure also failed', uploadedId, e2));
+    }
     await markPdfFailed(deps, claimId, requestId, errorMessage(e));
     return 'failed';
   }

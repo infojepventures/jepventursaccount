@@ -1,18 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { AnyAttachment } from '../claims/types';
 import { api } from '../lib/apiInstance';
 import { colors, radius, space } from '../ui/theme';
 
+// ID tokens expire after 1 hour; refresh well before that for a screen left open a while.
+const HEADERS_REFRESH_MS = 30 * 60 * 1000;
+
 function useAuthHeaders() {
   const [headers, setHeaders] = useState<Record<string, string> | null>(null);
-  useEffect(() => {
+  const refresh = useCallback(() => {
     api.authHeaders().then(setHeaders).catch(() => setHeaders(null));
   }, []);
-  return headers;
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, HEADERS_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [refresh]);
+  return { headers, refresh };
 }
 
 export function AttachmentList({
@@ -25,7 +33,16 @@ export function AttachmentList({
   onRemove?: (key: string) => void;
 }) {
   const router = useRouter();
-  const headers = useAuthHeaders();
+  const { headers, refresh } = useAuthHeaders();
+  const [retried, setRetried] = useState<Set<string>>(new Set());
+
+  const retryOnce = useCallback((key: string) => {
+    setRetried((prev) => {
+      if (prev.has(key)) return prev;
+      refresh();
+      return new Set(prev).add(key);
+    });
+  }, [refresh]);
 
   return (
     <View style={styles.grid}>
@@ -45,7 +62,12 @@ export function AttachmentList({
             {isImage && a.kind === 'local' ? (
               <Image source={{ uri: a.uri }} style={styles.thumb} contentFit="cover" />
             ) : isImage && remoteUri && headers ? (
-              <Image source={{ uri: remoteUri, headers }} style={styles.thumb} contentFit="cover" />
+              <Image
+                source={{ uri: remoteUri, headers }}
+                style={styles.thumb}
+                contentFit="cover"
+                onError={() => retryOnce(a.key)}
+              />
             ) : (
               <View style={[styles.thumb, styles.pdf]}>
                 <Ionicons name="document-text-outline" size={28} color={colors.muted} />

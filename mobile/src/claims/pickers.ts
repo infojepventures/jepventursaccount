@@ -2,7 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
-import { MAX_ATTACHMENT_BYTES } from '@jep/shared';
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '@jep/shared';
 import { newKey, type LocalAttachment } from './types';
 
 const MAX_EDGE = 2000;
@@ -61,6 +61,9 @@ export async function pickPdfs(limit: number): Promise<LocalAttachment[]> {
   if (limit <= 0) return [];
   const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', multiple: true, copyToCacheDirectory: true });
   if (res.canceled) return [];
+  if (res.assets.length > limit) {
+    Alert.alert('Too many files', `You can attach up to ${MAX_ATTACHMENTS} receipts. Only the first ${limit} were added.`);
+  }
   const out: LocalAttachment[] = [];
   for (const a of res.assets.slice(0, limit)) {
     const size = a.size ?? (await sizeOf(a.uri));

@@ -12,4 +12,11 @@
   directory = "netlify/dist/functions"
   node_bundler = "esbuild"
   external_node_modules = ["subset-font", "harfbuzzjs", "firebase-admin"]
+
+# Only these two functions touch the PDF font/logo assets; shipping them with every
+# function bloats every other function's zip for nothing.
+[functions."generate-pdf-background"]
+  included_files = ["netlify/assets/**"]
+
+[functions.health]
   included_files = ["netlify/assets/**"]

@@ -147,8 +147,14 @@ try {
   await sheets.deleteClaimRow(claimId).catch(() => undefined);
   await db.collection(COL.claims).doc(claimId).delete();
   const after = (await counterRef.get()).data()?.next as number;
-  if (after === counterBefore + 1) await counterRef.update({ next: counterBefore });
-  else if (after !== counterBefore) console.warn(`⚠ counter moved from ${counterBefore} to ${after}; not restoring`);
+  // Only roll the counter back if the smoke approval consumed exactly counterBefore (visible in the final
+  // refNo's zero-padded suffix) and nothing else has bumped the counter since.
+  const consumedExpectedSeq = c?.refNo.endsWith(String(counterBefore).padStart(3, '0')) ?? false;
+  if (consumedExpectedSeq && after === counterBefore + 1) {
+    await counterRef.update({ next: counterBefore });
+  } else if (after !== counterBefore) {
+    console.warn(`⚠ counter moved from ${counterBefore} to ${after} (refNo ${c?.refNo}); not restoring`);
+  }
   await db.collection(COL.users).doc(UID).delete();
   await auth.deleteUser(UID).catch(() => undefined);
 }
