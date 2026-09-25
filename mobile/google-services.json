@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "642500481343",
+    "project_id": "jepventuresaccount",
+    "storage_bucket": "jepventuresaccount.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:642500481343:android:84a85bba62660553a1038a",
+        "android_client_info": {
+          "package_name": "com.jepventures.account"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_n4YLeW9Sv9jXxBRLngZcUUosuHjqEgc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

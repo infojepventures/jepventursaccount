@@ -2,7 +2,7 @@
   "name": "jep-claims",
   "private": true,
   "type": "module",
-  "workspaces": ["shared", "netlify"],
+  "workspaces": ["shared", "netlify", "mobile"],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
