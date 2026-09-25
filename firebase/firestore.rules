@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc(request.auth.uid).data.role == 'admin'
+        && userDoc(request.auth.uid).data.active == true;
+    }
+    function shortString(v, max) {
+      return v is string && v.size() <= max;
+    }
+    function validBank(b) {
+      return b == null || (
+        b is map
+        && b.keys().hasOnly(['bankName', 'accountHolder', 'accountNumber'])
+        && shortString(b.bankName, 100)
+        && shortString(b.accountHolder, 100)
+        && shortString(b.accountNumber, 30)
+      );
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && resource.data.active == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'position', 'bank', 'updatedAt'])
+        && shortString(request.resource.data.name, 100)
+        && shortString(request.resource.data.position, 100)
+        && validBank(request.resource.data.bank);
+      allow create, delete: if false;
+    }
+
+    match /claims/{claimId} {
+      allow read: if signedIn() && (resource.data.applicant.uid == request.auth.uid || isAdmin());
+      allow write: if false;
+    }
+
+    match /invites/{email} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /counters/{id} {
+      allow read, write: if false;
+    }
+  }
+}
