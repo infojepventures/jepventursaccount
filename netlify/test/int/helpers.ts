@@ -8,6 +8,8 @@ import { loadPdfAssets } from '../../lib/assets';
 import type { Deps } from '../../lib/deps';
 import { getAdminApp } from '../../lib/firebaseAdmin';
 import { CLAIM_SEQ_DOC, COL } from '../../lib/firestore';
+import { createUploadSessions } from '../../lib/services/uploadSession';
+import { submitClaim } from '../../lib/services/submitClaim';
 import { FakeDrive, FakeSheets } from '../fakes';
 
 const PROJECT = process.env.GCLOUD_PROJECT ?? 'demo-jep';
@@ -95,3 +97,29 @@ export interface TestFile {
   data: Uint8Array;
 }
 export const jpgFile = (name = 'receipt.jpg'): TestFile => ({ name, mimeType: 'image/jpeg', data: jpgBytes() });
+
+export async function uploadFiles(t: TestKit, actor: Actor, claimId: string, files: TestFile[]): Promise<string[]> {
+  const res = await createUploadSessions(t.deps, actor, {
+    claimId,
+    files: files.map((f) => ({ name: f.name, mimeType: f.mimeType, size: f.data.length })),
+  });
+  return res.uploads.map((u, i) => t.drive.completeUpload(u.uploadUrl, files[i]!.data));
+}
+
+export async function submitNewClaim(
+  t: TestKit,
+  actor: Actor,
+  opts: { files?: TestFile[]; amounts?: number[] } = {},
+): Promise<{ claimId: string; attachmentIds: string[] }> {
+  const claimId = newClaimId(t.deps);
+  const attachmentIds = await uploadFiles(t, actor, claimId, opts.files ?? [jpgFile()]);
+  await submitClaim(t.deps, actor, {
+    claimId,
+    items: (opts.amounts ?? [1050, 13950]).map((amountCents, i) => ({ description: `Item ${i + 1}`, amountCents })),
+    payment: BANK,
+    attachmentIds,
+    resubmit: false,
+    saveBankToProfile: false,
+  });
+  return { claimId, attachmentIds };
+}
