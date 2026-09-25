@@ -25,3 +25,9 @@ export const fail = {
 export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
+
+/** True for a Firestore "document already exists" failure (from `ref.create`), e.g. a concurrent duplicate write. */
+export function isAlreadyExists(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  return code === 6 || code === 'already-exists';
+}

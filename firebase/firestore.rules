@@ -51,5 +51,9 @@ service cloud.firestore {
     match /counters/{id} {
       allow read, write: if false;
     }
+
+    match /uploadFolders/{claimId} {
+      allow read, write: if false;
+    }
   }
 }
