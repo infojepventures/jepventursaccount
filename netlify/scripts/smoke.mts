@@ -146,6 +146,7 @@ try {
   if (folderId) await drive.trash(folderId).catch(() => undefined);
   await sheets.deleteClaimRow(claimId).catch(() => undefined);
   await db.collection(COL.claims).doc(claimId).delete();
+  await db.collection(COL.uploadFolders).doc(claimId).delete();
   const after = (await counterRef.get()).data()?.next as number;
   // Only roll the counter back if the smoke approval consumed exactly counterBefore (visible in the final
   // refNo's zero-padded suffix) and nothing else has bumped the counter since.
