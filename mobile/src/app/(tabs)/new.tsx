@@ -24,8 +24,7 @@ export default function NewClaimTab() {
       submitLabel="Submit claim"
       onSubmitted={(id) => {
         setRound((r) => r + 1);
-        // /claim/[id] route is added in Task 6; cast until it exists.
-        router.push({ pathname: '/claim/[id]', params: { id } } as never);
+        router.push({ pathname: '/claim/[id]', params: { id } });
       }}
     />
   );

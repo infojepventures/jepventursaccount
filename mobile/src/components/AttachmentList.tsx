@@ -34,11 +34,10 @@ export function AttachmentList({
         const remoteUri = a.kind === 'remote' && claimId ? api.fileUrl(claimId, a.driveFileId) : null;
         const open = () => {
           if (a.kind === 'remote' && claimId) {
-            // /viewer route is added in a later task; cast until it exists.
             router.push({
               pathname: '/viewer',
               params: { claimId, fileId: a.driveFileId, mimeType: a.mimeType, name: a.name },
-            } as never);
+            });
           }
         };
         return (
