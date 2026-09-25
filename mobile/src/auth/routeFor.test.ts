@@ -17,4 +17,7 @@ describe('routeFor', () => {
     expect(routeFor({ status: 'signedIn', profileComplete: true }, 'profile-setup')).toBe('/');
     expect(routeFor({ status: 'signedIn', profileComplete: true }, 'claim')).toBeNull();
   });
+  it('stays put on a transient session error', () => {
+    expect(routeFor({ status: 'error', profileComplete: false }, '(tabs)')).toBeNull();
+  });
 });

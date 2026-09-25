@@ -1,10 +1,10 @@
-export type AuthStatus = 'loading' | 'signedOut' | 'signedIn';
+export type AuthStatus = 'loading' | 'signedOut' | 'signedIn' | 'error';
 
 export function routeFor(
   s: { status: AuthStatus; profileComplete: boolean },
   firstSegment: string | undefined,
 ): '/login' | '/profile-setup' | '/' | null {
-  if (s.status === 'loading') return null;
+  if (s.status === 'loading' || s.status === 'error') return null;
   const inLogin = firstSegment === 'login';
   const inSetup = firstSegment === 'profile-setup';
   if (s.status === 'signedOut') return inLogin ? null : '/login';
