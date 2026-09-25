@@ -1,5 +1,5 @@
 [build]
-  command = "echo 'Functions-only site'"
+  command = "npm run build:functions -w @jep/netlify"
   publish = "netlify/public"
 
 [build.environment]
@@ -7,7 +7,7 @@
   NPM_FLAGS = "--workspace=@jep/netlify --workspace=@jep/shared --include-workspace-root"
 
 [functions]
-  directory = "netlify/functions"
+  directory = "netlify/dist/functions"
   node_bundler = "esbuild"
   external_node_modules = ["subset-font", "harfbuzzjs", "firebase-admin"]
   included_files = ["netlify/assets/**"]

@@ -9,7 +9,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "pdf:sample": "tsx scripts/pdf-sample.mts",
     "setup": "tsx --env-file=.env scripts/setup.mts",
-    "smoke": "tsx --env-file=.env scripts/smoke.mts"
+    "smoke": "tsx --env-file=.env scripts/smoke.mts",
+    "build:functions": "node scripts/build-functions.mjs"
   },
   "dependencies": {
     "@jep/shared": "*",
@@ -23,6 +24,7 @@
     "@firebase/rules-unit-testing": "^5.0.2",
     "@netlify/functions": "^6.0.0",
     "@types/node": "^22.0.0",
+    "esbuild": "^0.28.2",
     "firebase": "^12.19.0",
     "pdfjs-dist": "^6.3.289",
     "tsx": "^4.23.15",

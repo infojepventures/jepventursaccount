@@ -1,5 +1,6 @@
 node_modules/
 .netlify/
+netlify/dist/
 netlify/.env
 netlify/tmp/
 *.log
