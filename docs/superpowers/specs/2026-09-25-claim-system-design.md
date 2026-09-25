@@ -248,5 +248,5 @@ Netlify env vars (server-side only): `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMI
   - creates `JEP Claims/` in the Shared Drive
   - creates the Sheet with its header row
   - sets `counters/claimSeq.next = 1`
-  - creates the first admin (wailoong8278.jcim@jcikl.cc)
+  - creates the first admins: wailoong8278.jcim@jcikl.cc and info.jepventures@gmail.com (as admin invites, so both can use Google Sign-In)
 - Service account: add it to the Shared Drive as Content Manager.
