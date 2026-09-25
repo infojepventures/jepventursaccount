@@ -37,9 +37,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let unsubUser: (() => void) | undefined;
+    let gen = 0;
     const unsubAuth = onAuthStateChanged(auth, async (fu) => {
       unsubUser?.();
       unsubUser = undefined;
+      const my = ++gen;
+      let signingOut = false;
       if (!fu) {
         setUser(null);
         setStatus('signedOut');
@@ -48,25 +51,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await api.session(); // creates the user from an invite on first Google sign-in
       } catch (e) {
+        if (my !== gen) return;
         setError(friendlyMessage(e));
-        await signOutEverywhere();
+        if (!signingOut) {
+          signingOut = true;
+          await signOutEverywhere();
+        }
         return;
       }
+      if (my !== gen) return;
       unsubUser = onSnapshot(
         doc(db, 'users', fu.uid),
         (snap) => {
+          if (my !== gen) return;
           if (!snap.exists()) return;
           const u = snap.data() as UserDoc;
           if (!u.active) {
             setError('This account has been deactivated. Please contact an admin.');
-            void signOutEverywhere();
+            if (!signingOut) {
+              signingOut = true;
+              void signOutEverywhere();
+            }
             return;
           }
           setError(null);
           setUser({ uid: fu.uid, ...u });
           setStatus('signedIn');
         },
-        (err) => setError(err.message),
+        (err) => {
+          if (my !== gen) return;
+          setError(err.message);
+        },
       );
     });
     return () => {
