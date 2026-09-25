@@ -84,6 +84,7 @@ const counterRef = db.collection(COL.counters).doc(CLAIM_SEQ_DOC);
 const counterBefore = (await counterRef.get()).data()?.next as number;
 const claimId = db.collection(COL.claims).doc().id;
 let claim: ClaimDoc | null = null;
+let uploadFolderId: string | null = null;
 
 try {
   step('session');
@@ -94,9 +95,10 @@ try {
     { name: 'receipt.jpg', mimeType: 'image/jpeg', data: new Uint8Array(readFileSync('test/fixtures/receipt.jpg')) },
     { name: 'big.pdf', mimeType: 'application/pdf', data: await bigPdf() },
   ];
-  const sess = await call<{ uploads: { uploadUrl: string }[] }>('drive-upload-session', {
+  const sess = await call<{ folderId: string; uploads: { uploadUrl: string }[] }>('drive-upload-session', {
     claimId, files: files.map((f) => ({ name: f.name, mimeType: f.mimeType, size: f.data.length })),
   });
+  uploadFolderId = sess.folderId;
   const ids: string[] = [];
   for (const [i, f] of files.entries()) {
     const r = await fetch(sess.uploads[i]!.uploadUrl, { method: 'PUT', headers: { 'Content-Type': f.mimeType }, body: toArrayBuffer(f.data) });
@@ -140,7 +142,8 @@ try {
   step('cleanup');
   const c = (await db.collection(COL.claims).doc(claimId).get()).data() as ClaimDoc | undefined;
   if (c?.pdf.driveFileId) await drive.trash(c.pdf.driveFileId).catch(() => undefined);
-  if (c?.attachmentsFolderId) await drive.trash(c.attachmentsFolderId).catch(() => undefined);
+  const folderId = c?.attachmentsFolderId ?? uploadFolderId;
+  if (folderId) await drive.trash(folderId).catch(() => undefined);
   await sheets.deleteClaimRow(claimId).catch(() => undefined);
   await db.collection(COL.claims).doc(claimId).delete();
   const after = (await counterRef.get()).data()?.next as number;

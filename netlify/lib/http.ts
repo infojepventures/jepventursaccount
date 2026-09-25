@@ -1,5 +1,13 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { ApiErrorBody } from '@jep/shared';
 import { ApiError, fail } from './errors';
+
+export function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });

@@ -60,6 +60,13 @@ describe('adminUsers', () => {
     const { t, alice } = await setup();
     await expect(adminUsers(t.deps, alice, { action: 'invite', email: 'x@y.com', role: 'admin' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
+
+  it('setActive on a user with no Auth account fails without touching Firestore', async () => {
+    const { t, boss } = await setup();
+    await seedActor(t.deps, 'ghostuser');
+    await expect(adminUsers(t.deps, boss, { action: 'setActive', uid: 'ghostuser', active: false })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(((await t.deps.db.collection(COL.users).doc('ghostuser').get()).data() as UserDoc).active).toBe(true);
+  });
 });
 
 describe('resyncSheet', () => {

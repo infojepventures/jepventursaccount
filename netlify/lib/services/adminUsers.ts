@@ -75,8 +75,15 @@ export async function adminUsers(deps: Deps, actor: Actor, req: AdminUsersReques
     case 'setActive': {
       if (typeof req.active !== 'boolean') throw fail.invalid('active must be true or false');
       const uid = await assertOtherExistingUser(deps, actor, req.uid);
+      try {
+        await deps.auth.updateUser(uid, { disabled: !req.active });
+      } catch (e) {
+        if ((e as { code?: string }).code === 'auth/user-not-found') {
+          throw fail.notFound('This user has no sign-in account');
+        }
+        throw e;
+      }
       await userRef(deps.db, uid).update({ active: req.active, updatedAt: now });
-      await deps.auth.updateUser(uid, { disabled: !req.active });
       return { ok: true };
     }
     default:

@@ -1,10 +1,12 @@
 import { getDeps } from '../lib/deps';
+import { safeEqual } from '../lib/http';
 import { generatePdf } from '../lib/services/generatePdf';
 
 // "-background" suffix: Netlify replies 202 immediately and runs this for up to 15 minutes.
 export default async (req: Request): Promise<void> => {
   const secret = process.env.INTERNAL_FUNCTION_SECRET;
-  if (req.method !== 'POST' || !secret || req.headers.get('x-internal-secret') !== secret) {
+  const header = req.headers.get('x-internal-secret');
+  if (req.method !== 'POST' || !secret || !header || !safeEqual(header, secret)) {
     console.warn('[generate-pdf-background] rejected request');
     return;
   }
