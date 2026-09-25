@@ -212,7 +212,16 @@ Out of scope for v1: push and email notifications, offline submission, multi-cur
 - `file-proxy` streams a file only if it belongs to a claim the caller can read.
 - Service account scopes: `https://www.googleapis.com/auth/drive` and `https://www.googleapis.com/auth/spreadsheets`.
 
-Netlify env vars (server-side only): `FIREBASE_ADMIN_PROJECT_ID`, `FIREBASE_ADMIN_CLIENT_EMAIL`, `FIREBASE_ADMIN_PRIVATE_KEY`, `GOOGLE_SA_EMAIL`, `GOOGLE_SA_PRIVATE_KEY`, `GOOGLE_SHARED_DRIVE_ID=0ABnERw4RUzYbUk9PVA`, `GOOGLE_ROOT_FOLDER_ID`, `GOOGLE_SHEET_ID`, `INTERNAL_FUNCTION_SECRET`, `FUNCTIONS_BASE_URL`.
+Netlify env vars (server-side only): `FIREBASE_PROJECT_ID`, `GOOGLE_SA_EMAIL`, `GOOGLE_SA_PRIVATE_KEY`, `GOOGLE_SHARED_DRIVE_ID=0ABnERw4RUzYbUk9PVA`, `GOOGLE_ROOT_FOLDER_ID`, `GOOGLE_SHEET_ID`, `INTERNAL_FUNCTION_SECRET`, and optionally `FUNCTIONS_BASE_URL`. A single service account (the Firebase Admin SDK key) serves Firestore, Drive and Sheets, because two private keys would exceed Lambda's 4KB env-var limit.
+
+Planning amendments (2026-09-26):
+- There are two extra functions: `session` (verifies sign-in and turns an invite into a user) and `health` (checks that the assets are bundled).
+- Each claim has at least 1 attachment.
+- `file-proxy` streams files up to 19MB (the Netlify streaming limit). For larger files it returns `FILE_TOO_LARGE`, and the app points the user to Drive.
+- Claims also store `attachmentsFolderId` and `pdf.requestId`. A background PDF run whose `requestId` is stale discards its output, so a slow draft can never overwrite the final PDF.
+- Admins can read `invites`.
+- Any wrong current status returns `409 STATUS_CHANGED`. Role or ownership failures return `403 FORBIDDEN`.
+- CJK text uses a HarfBuzz pre-subset (`subset-font`) of the Noto Sans SC variable TTF, embedded with `subset: false`, because pdf-lib's own subsetting drops CJK glyphs (verified).
 
 ## 11. Error Handling
 
