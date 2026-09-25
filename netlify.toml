@@ -4,6 +4,8 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # firebase-admin's jwks-rsa require()s ESM-only jose 6, which needs Node >= 22.12 at runtime.
+  AWS_LAMBDA_JS_RUNTIME = "nodejs22.x"
   NPM_FLAGS = "--workspace=@jep/netlify --workspace=@jep/shared --include-workspace-root"
 
 [functions]
