@@ -1,7 +1,7 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
-import { allowedActions, formatRM, formatYmd, formatYmdHms, isValidYmd } from '@jep/shared';
+import { allowedActions, formatRM, formatYmd, formatYmdHms, isValidYmd, PDF_STUCK_AFTER_MS } from '@jep/shared';
 import { useAuth } from '../../../auth/AuthProvider';
 import { remoteAttachments } from '../../../claims/draft';
 import { AttachmentList } from '../../../components/AttachmentList';
@@ -42,6 +42,9 @@ export default function ClaimDetailScreen() {
 
   const actions = allowedActions({ status: claim.status, isApplicant: claim.applicant.uid === user?.uid, isAdmin });
   const can = (a: (typeof actions)[number]) => actions.includes(a);
+  const pdfStuck =
+    claim.pdf.status === 'generating' &&
+    (!claim.pdf.requestedAt || Date.now() - claim.pdf.requestedAt.toDate().getTime() > PDF_STUCK_AFTER_MS);
   const confirm = (title: string, message: string, fn: () => Promise<unknown>, destructive = false) =>
     Alert.alert(title, message, [
       { text: 'Cancel', style: 'cancel' },
@@ -67,7 +70,22 @@ export default function ClaimDetailScreen() {
 
         <Section title="Payment request PDF">
           {claim.pdf.status === 'generating' ? (
-            <View style={styles.inline}><ActivityIndicator color={colors.primary} /><Text style={styles.muted}>Generating PDF…</Text></View>
+            <>
+              <View style={styles.inline}><ActivityIndicator color={colors.primary} /><Text style={styles.muted}>Generating PDF…</Text></View>
+              {pdfStuck ? (
+                <>
+                  <Text style={{ color: colors.danger }}>PDF is taking too long. It may be stuck.</Text>
+                  {can('regenerate_pdf') ? (
+                    <Button
+                      title="Regenerate PDF"
+                      variant="secondary"
+                      loading={busy}
+                      onPress={() => run(async () => { await api.regeneratePdf({ claimId: claim.id }); })}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+            </>
           ) : claim.pdf.status === 'ready' && claim.pdf.driveFileId ? (
             <Button
               title="View PDF"
