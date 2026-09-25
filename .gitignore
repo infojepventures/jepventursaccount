@@ -1,0 +1,11 @@
+node_modules/
+.netlify/
+netlify/.env
+netlify/tmp/
+*.log
+.DS_Store
+*-firebase-adminsdk-*.json
+service-account*.json
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
