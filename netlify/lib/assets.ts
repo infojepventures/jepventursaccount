@@ -18,6 +18,11 @@ export function resolveAsset(rel: string): string | null {
   for (const root of roots) {
     const p = path.join(root, rel);
     if (existsSync(p)) return p;
+    // Also try without 'netlify/' prefix if present
+    if (rel.startsWith('netlify/')) {
+      const pWithoutPrefix = path.join(root, rel.slice('netlify/'.length));
+      if (existsSync(pWithoutPrefix)) return pWithoutPrefix;
+    }
   }
   return null;
 }
