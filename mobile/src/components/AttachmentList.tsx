@@ -55,10 +55,13 @@ export function AttachmentList({
               pathname: '/viewer',
               params: { claimId, fileId: a.driveFileId, mimeType: a.mimeType, name: a.name },
             });
+          } else if (a.kind === 'local') {
+            // Not submitted yet: preview the picked file straight from the device.
+            router.push({ pathname: '/viewer', params: { localUri: a.uri, mimeType: a.mimeType, name: a.name } });
           }
         };
         return (
-          <Pressable key={a.key} style={styles.tile} onPress={open}>
+          <Pressable key={a.key} style={styles.tile} onPress={open} accessibilityLabel={`Open ${a.name}`}>
             {isImage && a.kind === 'local' ? (
               <Image source={{ uri: a.uri }} style={styles.thumb} contentFit="cover" />
             ) : isImage && remoteUri && headers ? (

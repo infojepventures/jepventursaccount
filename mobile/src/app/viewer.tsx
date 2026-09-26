@@ -10,7 +10,15 @@ import { friendlyMessage } from '../lib/api';
 import { colors, space } from '../ui/theme';
 
 export default function ViewerScreen() {
-  const { claimId, fileId, mimeType, name } = useLocalSearchParams<{ claimId: string; fileId: string; mimeType: string; name: string }>();
+  // Either a submitted Drive file (claimId + fileId, fetched with auth headers) or, while a claim is still
+  // being filled in, a picked file on the device (localUri, no headers and no sharing).
+  const { claimId, fileId, localUri, mimeType, name } = useLocalSearchParams<{
+    claimId?: string;
+    fileId?: string;
+    localUri?: string;
+    mimeType: string;
+    name: string;
+  }>();
   const [headers, setHeaders] = useState<Record<string, string> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -21,24 +29,25 @@ export default function ViewerScreen() {
   }, []);
 
   useEffect(() => {
-    loadHeaders();
-  }, [loadHeaders]);
+    if (localUri) setHeaders({});
+    else loadHeaders();
+  }, [loadHeaders, localUri]);
 
-  const uri = api.fileUrl(claimId, fileId);
+  const uri = localUri ?? api.fileUrl(claimId!, fileId!);
   const tooLarge = 'Could not open this file. If it is very large, open it from the Google Drive folder instead.';
 
   const onLoadError = useCallback(() => {
     // The headers may just be stale (e.g. an expired ID token); retry once with fresh ones before giving up.
-    if (!retried.current) {
+    if (!retried.current && !localUri) {
       retried.current = true;
       loadHeaders();
       return;
     }
     setError(tooLarge);
-  }, [loadHeaders, tooLarge]);
+  }, [loadHeaders, localUri, tooLarge]);
 
   const onShare = useCallback((target: 'whatsapp' | 'any') => {
-    if (sharing) return;
+    if (sharing || !claimId || !fileId) return;
     setSharing(true);
     shareClaimFile({ claimId, fileId, name, mimeType, target })
       .catch((e) => Alert.alert('Could not share', friendlyMessage(e)))
@@ -59,7 +68,7 @@ export default function ViewerScreen() {
         options={{
           title: name ?? 'Attachment',
           headerRight: () =>
-            sharing ? (
+            localUri ? null : sharing ? (
               <ActivityIndicator color={colors.primary} style={styles.headerBtn} />
             ) : (
               <Pressable hitSlop={10} style={styles.headerBtn} onPress={onSharePress} accessibilityLabel="Share">
