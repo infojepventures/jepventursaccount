@@ -13,7 +13,7 @@ export interface ReceiptStatus {
 export function receiptStatus(a: LocalAttachment): ReceiptStatus {
   if (a.error) return { label: 'Upload failed', tone: 'danger', retry: 'upload' };
   if (!a.uploadedId) {
-    if (a.progress === undefined) return { label: 'Waiting to upload', tone: 'busy' };
+    if (a.progress === undefined) return { label: 'Preparing upload…', tone: 'busy' };
     const progress = Math.min(1, Math.max(0, a.progress));
     // All bytes sent; Google Drive is still finalising the file.
     if (progress >= 1) return { label: 'Finishing upload…', tone: 'busy', progress };

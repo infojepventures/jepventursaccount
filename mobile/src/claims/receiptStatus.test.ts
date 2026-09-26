@@ -6,7 +6,7 @@ const uploaded = { ...base, uploadedId: 'f1', progress: 1 };
 
 describe('receiptStatus', () => {
   it('walks through upload: waiting, then a percentage with a progress fraction', () => {
-    expect(receiptStatus(base)).toEqual({ label: 'Waiting to upload', tone: 'busy' });
+    expect(receiptStatus(base)).toEqual({ label: 'Preparing upload…', tone: 'busy' });
     expect(receiptStatus({ ...base, progress: 0.456 })).toEqual({ label: 'Uploading 46%', tone: 'busy', progress: 0.456 });
   });
 
