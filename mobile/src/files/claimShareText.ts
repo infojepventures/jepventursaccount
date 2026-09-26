@@ -5,7 +5,7 @@ export interface WhatsAppClaimTextInput {
   totalCents: number;
   items: { description: string; amountCents: number }[];
   payment: { bankName: string; accountHolder: string; accountNumber: string };
-  pdf: { driveFileId: string | null };
+  pdf: { driveFileId: string | null; fileName: string | null };
 }
 
 /** Collapses newlines/whitespace runs inside a value into single spaces, then trims. */
@@ -15,7 +15,7 @@ function clean(value: string): string {
 
 /**
  * Builds the WhatsApp-markdown text message for a claim's "WhatsApp" share button: a quoted
- * supplier line + Drive link, one quoted block per item with its ref/amount, then a totals +
+ * supplier line, document name and Drive link, one quoted block per item with its ref/amount, then a totals +
  * bank-details footer. Pure and native-mock-free so it's directly unit-testable.
  */
 export function buildWhatsAppClaimText(claim: WhatsAppClaimTextInput): string {
@@ -25,6 +25,7 @@ export function buildWhatsAppClaimText(claim: WhatsAppClaimTextInput): string {
   const accountHolder = clean(claim.payment.accountHolder);
 
   const lines: string[] = [`> *Supplier: ${accountHolder}*`];
+  if (claim.pdf.fileName) lines.push(clean(claim.pdf.fileName).replace(/\.pdf$/i, ''));
   if (claim.pdf.driveFileId) {
     lines.push(`https://drive.google.com/file/d/${claim.pdf.driveFileId}/view`);
   }
