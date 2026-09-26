@@ -38,7 +38,16 @@ export default function ReviewTab() {
         <FilterChips options={SEGMENTS} value={segment} onChange={setSegment} />
       </View>
       <View style={styles.toolbar}>
-        {segment === 'all' ? (
+        {/* In select mode the selection toolbar replaces the summary/search, so the two never share
+            (and squeeze) the same row. */}
+        {batch.selectMode ? (
+          <BatchSelectToolbar
+            selectMode={batch.selectMode}
+            count={batch.selectedClaims.length}
+            onSelectAll={batch.selectAll}
+            onCancel={batch.exit}
+          />
+        ) : segment === 'all' ? (
           <View style={styles.search}>
             <TextField label="Search" placeholder="PR number or name" value={search} onChangeText={setSearch} autoCapitalize="none" />
           </View>
@@ -47,12 +56,6 @@ export default function ReviewTab() {
             {data.length} claim{data.length === 1 ? '' : 's'} · {formatRM(sumCents(data.map((c) => ({ amountCents: c.totalCents }))))}
           </Text>
         )}
-        <BatchSelectToolbar
-          selectMode={batch.selectMode}
-          count={batch.selectedClaims.length}
-          onSelectAll={batch.selectAll}
-          onCancel={batch.exit}
-        />
       </View>
       <BatchHint visible={!batch.selectMode && rows.length > 0} />
       {loading ? (

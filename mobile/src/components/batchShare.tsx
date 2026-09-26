@@ -176,7 +176,7 @@ export function BatchShareBar({
 }
 
 const styles = StyleSheet.create({
-  selectRow: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
+  selectRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space(3), paddingBottom: space(1) },
   selectCount: { flex: 1, color: colors.muted },
   selectAllBtn: { paddingVertical: space(2), paddingHorizontal: space(1) },
   selectAllText: { color: colors.primary, fontWeight: '600' },
