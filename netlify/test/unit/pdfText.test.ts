@@ -1,3 +1,8 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import esbuild from 'esbuild';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { extractPdfText } from '../../lib/pdfText';
@@ -35,4 +40,36 @@ describe('extractPdfText', () => {
     const text = await extractPdfText(bytes);
     expect(text.split('\n')).toEqual(['Alpha', 'Beta']);
   });
+
+  it('still works once esbuild inlines pdfjs into a single deployed file (no sibling pdf.worker.mjs)', async () => {
+    // Regression: on Netlify every PDF failed with "Setting up fake worker failed" because the bundle had no
+    // pdf.worker.mjs next to it. Bundle the way scripts/build-functions.mjs does and run it from a temp dir.
+    const dir = mkdtempSync(path.join(tmpdir(), 'pdftext-bundle-'));
+    try {
+      const pdfPath = path.join(dir, 'in.pdf');
+      writeFileSync(pdfPath, await makePdf(['Invoice No: IV-00615', 'Total 5000.00']));
+      const entry = path.join(dir, 'entry.ts');
+      writeFileSync(
+        entry,
+        `import { readFileSync } from 'node:fs';
+import { extractPdfText } from ${JSON.stringify(path.resolve(__dirname, '../../lib/pdfText.ts'))};
+extractPdfText(readFileSync(process.argv[2])).then((t) => process.stdout.write(t));`,
+      );
+      const outfile = path.join(dir, 'out.mjs');
+      await esbuild.build({
+        entryPoints: [entry],
+        outfile,
+        bundle: true,
+        platform: 'node',
+        format: 'esm',
+        target: 'node22',
+        logLevel: 'silent',
+        banner: { js: "import { createRequire as __cr } from 'node:module'; globalThis.require = __cr(import.meta.url);" },
+      });
+      const text = execFileSync(process.execPath, [outfile, pdfPath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      expect(text.split('\n')).toEqual(['Invoice No: IV-00615', 'Total 5000.00']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

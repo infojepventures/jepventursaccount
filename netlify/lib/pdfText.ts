@@ -1,4 +1,11 @@
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import * as pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
+
+// In Node, pdfjs runs a "fake worker" by dynamically importing `./pdf.worker.mjs` next to its own file.
+// Once esbuild inlines pdfjs into a function bundle that sibling file no longer exists on Netlify, so every
+// PDF failed with "Setting up fake worker failed". Handing pdfjs the statically-bundled worker avoids the
+// dynamic import entirely.
+(globalThis as { pdfjsWorker?: unknown }).pdfjsWorker ??= pdfjsWorker;
 
 const MAX_PAGES = 15;
 /** Text items whose baseline y differs by more than this (PDF points) start a new line. */

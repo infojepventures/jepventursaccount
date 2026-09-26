@@ -183,4 +183,35 @@ describe('extractSuggestionFromText (free, Document-AI-less path)', () => {
     expect(extractSuggestionFromText('Account No: 8605461067').reference).toBeUndefined();
     expect(extractSuggestionFromText('Room No 12').reference).toBeUndefined();
   });
+
+  it('parses a PDF invoice with comma-less thousands, leading row no./qty columns, and JEP as the issuer', () => {
+    const text = [
+      'JEP VENTURESSDN BHD (1521088-K)',
+      'D-2-15, Pusat Komersial Jalan Kuching',
+      'INVOICE : IV-00615',
+      'LK Entertainment Marketing (M) Sdn Bhd Your Ref. :',
+      'Terms : CASH',
+      'Date : 10/08/2026',
+      'TEL : 016-764 0795 FAX :',
+      'Description Price/Unit Amount No Qty',
+      '1 20 FLOR DE OLIVA CONNECTICUT ROBUSTO 40 800.00',
+      '2 40 TABACOS BAEZ SERIE SF ROBUSTO 40 1600.00',
+      'Total 5000.00 RINGGIT MALAYSIA : FIVE THOUSAND ONLY',
+      '1. All cheques should be crossed and made payable to',
+      'JEP VENTURES SDN BHD',
+      '2. Bank : AMBANK',
+      'Account No: 8881055120904',
+    ].join('\n');
+    const s = extractSuggestionFromText(text);
+    expect(s.reference).toBe('IV-00615');
+    expect(s.amountCents).toBe(500000);
+    expect(s.description).toBe('FLOR DE OLIVA CONNECTICUT ROBUSTO');
+    // JEP's own bank details are never a claim payee.
+    expect(s.payee).toBeUndefined();
+  });
+
+  it('reads comma-less amounts of 1000 and above', () => {
+    expect(extractSuggestionFromText('Grand Total 1234.50').amountCents).toBe(123450);
+    expect(extractSuggestionFromText('Grand Total RM 12,345.00').amountCents).toBe(1234500);
+  });
 });

@@ -167,7 +167,9 @@ function findReferenceFromText(text: string, lines: string[]): string | undefine
 
 const TOTAL_LABEL = /(grand\s*total|nett?\s*total|total\s*payable|amount\s*due|\btotal\b)/i;
 const SUBTOTAL = /sub\s*-?\s*total/i;
-const MONEY_TOKEN = /\d{1,3}(?:,\d{3})*\.\d{2}/g;
+/** "1,234.50" or comma-less "1234.50"; never a fragment of a longer number. */
+const MONEY = String.raw`(?<![\d,.])(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}(?!\d)`;
+const MONEY_TOKEN = new RegExp(MONEY, 'g');
 
 function lastMoneyOnLine(line: string): number | undefined {
   const matches = [...line.matchAll(MONEY_TOKEN)];
@@ -185,7 +187,8 @@ function findAmountFromText(lines: string[]): number | undefined {
     const cents = lastMoneyOnLine(line);
     if (cents !== undefined) candidates.push(cents);
   }
-  return candidates.length ? Math.max(...candidates) : undefined;
+  const best = candidates.length ? Math.max(...candidates) : 0;
+  return best > 0 ? best : undefined;
 }
 
 const HOLDER_LABEL = /(?:account\s*name|a\/c\s*name|payee|beneficiary|pay\s*to)\s*[:\-]?\s*(.+)$/i;
@@ -199,6 +202,8 @@ function cleanHolderName(name: string): string {
     .replace(/[.\s]+$/, '')
     .trim();
 }
+
+const OWN_COMPANY = /\bJEP\s*VENTURES?/i;
 
 function findAccountHolderFromText(lines: string[]): string | undefined {
   for (const line of lines) {
@@ -214,14 +219,17 @@ function findAccountHolderFromText(lines: string[]): string | undefined {
 
 const LINE_ITEM_EXCLUDE =
   /(total|subtotal|tax|sst|gst|service\s*charge|change|cash|balance|rounding|discount|qty|quantity|price|description|invoice|receipt|bill|date|account|bank|payee|beneficiary)/i;
-const LINE_ITEM = /^(.{3,80}?)\s+(?:\d+\s*[xX]?\s*)?(?:RM\s*)?(\d{1,3}(?:,\d{3})*\.\d{2})\s*$/;
+const LINE_ITEM = new RegExp(String.raw`^(.{3,80}?)\s+(?:\d+\s*[xX]?\s*)?(?:RM\s*)?(${MONEY})\s*$`);
+/** Trailing numeric columns (unit price, discount, %) the lazy LINE_ITEM capture leaves behind. */
+const TRAILING_NUMBERS = new RegExp(String.raw`(?:\s+(?:RM\s*)?-?${MONEY}|\s+\d+(?:\.\d+)?%)+$`, 'i');
+/** Leading "No  Qty" columns, e.g. "1 20 FLOR DE OLIVA" -> "FLOR DE OLIVA". */
+const LEADING_ROW_QTY = /^\d{1,3}\s+\d{1,4}\s+(?=[A-Za-z])/;
 
 /** First line that looks like "<description> <amount>" and isn't a total/tax/label line. */
 function findDescriptionFromText(lines: string[]): string | undefined {
   for (const line of lines) {
     const m = line.match(LINE_ITEM);
-    // Strip trailing numeric columns (unit price, discount, %) the lazy capture left behind.
-    const desc = m?.[1]?.replace(/(?:\s+(?:RM\s*)?-?\d{1,3}(?:,\d{3})*\.\d{2}|\s+\d+(?:\.\d+)?%)+$/i, '').trim();
+    const desc = m?.[1]?.replace(TRAILING_NUMBERS, '').replace(LEADING_ROW_QTY, '').trim();
     if (!desc || desc.length < 3) continue;
     if (LINE_ITEM_EXCLUDE.test(line)) continue;
     return desc;
@@ -243,8 +251,10 @@ export function extractSuggestionFromText(text: string): AttachmentSuggestion {
   const bankName = detectBank(text ?? '');
   const accountNumber = extractAccountNumber(text ?? '', bankName);
 
+  // An invoice issued by JEP itself carries JEP's own bank details, which are never a claim payee.
+  const isOwnCompany = accountHolder !== undefined && OWN_COMPANY.test(accountHolder);
   const payee =
-    accountHolder || bankName || accountNumber
+    !isOwnCompany && (accountHolder || bankName || accountNumber)
       ? {
           ...(accountHolder ? { accountHolder } : {}),
           ...(bankName ? { bankName } : {}),
