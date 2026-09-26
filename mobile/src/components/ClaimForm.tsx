@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
 import { formatRM, MAX_ATTACHMENTS, parseAmountToCents } from '@jep/shared';
 import { applySuggestion } from '../claims/applySuggestion';
-import { draftErrors, draftTotalCents, emptyItem, itemErrors, type ClaimDraft, type DraftItem } from '../claims/draft';
+import { claimSummary } from '../claims/claimSummary';
+import { draftErrors, emptyItem, itemErrors, type ClaimDraft, type DraftItem } from '../claims/draft';
 import { orderByItem, receiptsForItem, unlinkedReceipts } from '../claims/itemReceipts';
 import { recognizeText } from '../claims/ocr';
 import { pickFromCamera, pickFromLibrary, pickPdfs } from '../claims/pickers';
@@ -17,6 +18,7 @@ import { Section } from '../ui/Section';
 import { TextField } from '../ui/TextField';
 import { colors, space } from '../ui/theme';
 import { AttachmentList } from './AttachmentList';
+import { ClaimSummaryCard } from './ClaimSummaryCard';
 import { ItemTabs, type ItemTab } from './ItemTabs';
 
 export function ClaimForm(p: {
@@ -209,10 +211,9 @@ export function ClaimForm(p: {
 
   return (
     <Screen>
-      <Section
-        title={`Items (${draft.items.length})`}
-        right={<Text style={styles.total}>{formatRM(draftTotalCents(draft))}</Text>}
-      >
+      <ClaimSummaryCard summary={claimSummary(draft, attachments)} onJumpToItem={setActiveKey} />
+
+      <Section title={`Items (${draft.items.length})`}>
         <ItemTabs tabs={tabs} activeKey={active.key} onSelect={setActiveKey} onAdd={submitting ? undefined : addItem} />
 
         <View style={styles.item}>
@@ -317,7 +318,6 @@ export function ClaimForm(p: {
 }
 
 const styles = StyleSheet.create({
-  total: { fontSize: 18, fontWeight: '800', color: colors.text },
   item: { gap: space(2) },
   receipts: { gap: space(2), paddingTop: space(3), borderTopWidth: 1, borderTopColor: colors.border },
   receiptsHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
