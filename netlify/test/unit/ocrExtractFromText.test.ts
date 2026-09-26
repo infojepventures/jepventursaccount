@@ -125,4 +125,30 @@ describe('extractSuggestionFromText (free, Document-AI-less path)', () => {
   it('returns an empty suggestion for empty text', () => {
     expect(extractSuggestionFromText('')).toEqual({});
   });
+
+  it('reads a REF: label, ignores digit-less "invoice not valid" disclaimers, and strips the company reg. no. from the payee', () => {
+    const text = [
+      'ULTRA CLEANING SDN BHD. (1040447-X)',
+      'NO. 91-1 JALAN PUTERI 5/7, BANDAR PUTERI, 47100 PUCHONG,SELANGOR',
+      'PROFORMA INVOICE',
+      'REF: DPM-PI2501009',
+      'DATE: 03/01/2025',
+      'ITEM CODE TAX CODE DESCRIPTION QTY PRICE (RM)',
+      'PSS PSS - RESIDENTIAL 1 2,000.00',
+      'Total (Inclusive of SST) 2,000.00',
+      'This invoice not valid without signature',
+      'CIMB BANK',
+      'Account No: 8605461067',
+    ].join('\n');
+    const s = extractSuggestionFromText(text);
+    expect(s.reference).toBe('DPM-PI2501009');
+    expect(s.amountCents).toBe(200000);
+    expect(s.payee?.accountHolder).toBe('ULTRA CLEANING SDN BHD');
+    expect(s.payee?.bankName).toBe('CIMB BANK');
+    expect(s.payee?.accountNumber).toBe('8605461067');
+  });
+
+  it('never returns a reference without a digit', () => {
+    expect(extractSuggestionFromText('Invoice Date: today\nReceipt No: pending').reference).toBeUndefined();
+  });
 });

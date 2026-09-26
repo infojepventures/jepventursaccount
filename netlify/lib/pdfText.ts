@@ -16,7 +16,7 @@ interface PositionedItem {
  * otherwise only reports a flat, unordered stream of positioned text runs.
  */
 export async function extractPdfText(data: Uint8Array): Promise<string> {
-  const pdf = await getDocument({ data: new Uint8Array(data), useSystemFonts: false }).promise;
+  const pdf = await getDocument({ data: new Uint8Array(data), useSystemFonts: false, verbosity: 0 }).promise;
   const pageCount = Math.min(pdf.numPages, MAX_PAGES);
   const pageTexts: string[] = [];
 

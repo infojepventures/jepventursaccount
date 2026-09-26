@@ -133,17 +133,21 @@ function detectBank(text: string): string | undefined {
 
 // --- Free (no Document AI) text-rule extraction --------------------------------------------
 
-/** "Invoice No" / "Inv No" / "Receipt No" / "Bill No" / "Doc No", each requiring an explicit No./Number/# suffix. */
-const REF_LABEL = /(?:invoice|inv|receipt|bill|doc)\s*(?:no\.?|number|#)\s*[:\-]?\s*(\S+)/i;
+/**
+ * "Invoice No" / "Inv No." / "Receipt #" / "Bill No" / "Doc No" / "Ref:" / "Reference No". Whole-word labels only, so
+ * disclaimers like "invoice not valid" don't match; the captured value must contain a digit (checked below).
+ */
+const REF_LABEL =
+  /\b(?:invoice|inv|receipt|bill|doc|ref(?:erence)?)\b\.?\s*(?:no\b\.?|number\b|#)?\s*(?:[:#]|\s-\s)?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i;
 /** Fallback bare reference token, e.g. INV-000317, ICS-000024. */
 const REF_TOKEN = /\b[A-Z]{2,6}-\d{3,}\b/;
 
 function findReferenceFromText(text: string, lines: string[]): string | undefined {
   for (const line of lines) {
-    const m = line.match(REF_LABEL);
-    if (!m?.[1]) continue;
-    const value = m[1].replace(/[.,;]+$/, '').trim();
-    if (value) return value;
+    for (const m of line.matchAll(new RegExp(REF_LABEL, 'gi'))) {
+      const value = (m[1] ?? '').replace(/[.,;]+$/, '').trim();
+      if (/\d/.test(value)) return value;
+    }
   }
   const token = text.match(REF_TOKEN);
   return token?.[0];
@@ -176,14 +180,22 @@ const HOLDER_LABEL = /(?:account\s*name|a\/c\s*name|payee|beneficiary|pay\s*to)\
 const COMPANY_HINT = /\b(SDN\s*BHD|BHD|ENTERPRISE|TRADING|PLT|RESOURCES)\b/i;
 const isAllCaps = (s: string) => s === s.toUpperCase() && /[A-Z]/.test(s);
 
+/** Drops a trailing company registration number like "(1040447-X)" / "(202001012345)" and trailing dots. */
+function cleanHolderName(name: string): string {
+  return name
+    .replace(/\s*\(\s*[A-Z0-9\-]*\d[A-Z0-9\-]*\s*\)\s*$/i, '')
+    .replace(/[.\s]+$/, '')
+    .trim();
+}
+
 function findAccountHolderFromText(lines: string[]): string | undefined {
   for (const line of lines) {
     const m = line.match(HOLDER_LABEL);
-    const value = m?.[1]?.trim();
+    const value = m?.[1] ? cleanHolderName(m[1]) : '';
     if (value) return value;
   }
   for (const line of lines.slice(0, 10)) {
-    if (isAllCaps(line) && COMPANY_HINT.test(line)) return line;
+    if (isAllCaps(line) && COMPANY_HINT.test(line)) return cleanHolderName(line);
   }
   return undefined;
 }
