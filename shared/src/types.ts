@@ -19,6 +19,8 @@ export interface BankDetails {
 export interface ClaimItem {
   description: string;
   amountCents: number;
+  /** Optional document/invoice/receipt number, trimmed, max 60 chars. */
+  reference?: string;
 }
 
 export interface Attachment {

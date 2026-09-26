@@ -9,7 +9,7 @@ const claim: ClaimDoc = {
   status: 'paid',
   applicant: { uid: 'u1', name: 'Tan Ah Kow', position: 'Executive' },
   items: [
-    { description: 'Parking', amountCents: 1000 },
+    { description: 'Parking', amountCents: 1000, reference: 'ICS-000024' },
     { description: 'Lunch', amountCents: 4550 },
   ],
   totalCents: 5550,
@@ -38,7 +38,7 @@ describe('toSheetRow', () => {
       '2026-09-25 12:00:00',
       'Tan Ah Kow',
       'Executive',
-      '1. Parking RM10.00; 2. Lunch RM45.50',
+      '1. ICS-000024 Parking RM10.00; 2. Lunch RM45.50',
       55.5,
       'Maybank',
       'Tan Ah Kow',

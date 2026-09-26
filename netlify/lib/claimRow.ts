@@ -33,7 +33,9 @@ export function toSheetRow(claimId: string, c: ClaimDoc): SheetRow {
     ts(c.submittedAt),
     c.applicant.name,
     c.applicant.position,
-    c.items.map((it, i) => `${i + 1}. ${it.description} RM${formatCents(it.amountCents)}`).join('; '),
+    c.items
+      .map((it, i) => `${i + 1}. ${it.reference ? `${it.reference} ` : ''}${it.description} RM${formatCents(it.amountCents)}`)
+      .join('; '),
     c.totalCents / 100,
     c.payment.bankName,
     c.payment.accountHolder,

@@ -26,6 +26,19 @@ describe('validateItems', () => {
       'Item 1: amount must be greater than 0',
     ]);
   });
+  it('accepts an optional reference', () => {
+    expect(validateItems([{ description: 'Parking', amountCents: 1000, reference: 'ICS-000024' }])).toEqual([]);
+  });
+  it('rejects a reference longer than 60 chars', () => {
+    expect(
+      validateItems([{ description: 'Parking', amountCents: 1000, reference: 'x'.repeat(61) }]),
+    ).toEqual(['Item 1: doc no. is too long']);
+  });
+  it('rejects a non-string reference', () => {
+    expect(validateItems([{ description: 'Parking', amountCents: 1000, reference: 123 }])).toEqual([
+      'Item 1: doc no. is too long',
+    ]);
+  });
 });
 
 describe('validateBank', () => {

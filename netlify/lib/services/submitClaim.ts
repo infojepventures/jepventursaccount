@@ -30,7 +30,14 @@ export async function submitClaim(deps: Deps, actor: Actor, req: SubmitClaimRequ
     throw fail.invalid(`Attach ${MIN_ATTACHMENTS} to ${MAX_ATTACHMENTS} files`);
   }
 
-  const items: ClaimItem[] = req.items.map((i) => ({ description: i.description.trim(), amountCents: i.amountCents }));
+  const items: ClaimItem[] = req.items.map((i) => {
+    const reference = typeof i.reference === 'string' ? i.reference.trim() : '';
+    return {
+      description: i.description.trim(),
+      amountCents: i.amountCents,
+      ...(reference ? { reference } : {}),
+    };
+  });
   const payment: BankDetails = {
     bankName: req.payment.bankName.trim(),
     accountHolder: req.payment.accountHolder.trim(),

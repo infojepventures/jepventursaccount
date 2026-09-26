@@ -26,7 +26,7 @@ export function validateItems(items: unknown): string[] {
       errors.push(`Item ${n}: invalid`);
       return;
     }
-    const { description, amountCents } = item as Record<string, unknown>;
+    const { description, amountCents, reference } = item as Record<string, unknown>;
     if (!isStr(description) || description.trim() === '') errors.push(`Item ${n}: description is required`);
     else if (description.length > 300) errors.push(`Item ${n}: description is too long`);
     if (
@@ -36,6 +36,10 @@ export function validateItems(items: unknown): string[] {
       amountCents > MAX_ITEM_AMOUNT_CENTS
     ) {
       errors.push(`Item ${n}: amount must be greater than 0`);
+    }
+    if (reference !== undefined) {
+      if (!isStr(reference)) errors.push(`Item ${n}: doc no. is too long`);
+      else if (reference.length > 60) errors.push(`Item ${n}: doc no. is too long`);
     }
   });
   return errors;

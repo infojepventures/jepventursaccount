@@ -84,6 +84,24 @@ describe('submitClaim (new)', () => {
     expect(u.bank).toEqual(BANK);
   });
 
+  it('persists a per-item reference only when non-empty', async () => {
+    const t = makeTestDeps();
+    const alice = await seedActor(t.deps, 'alice');
+    const claimId = newClaimId(t.deps);
+    const ids = await uploadFiles(t, alice, claimId, [jpgFile()]);
+    await submitClaim(t.deps, alice, {
+      claimId,
+      items: [
+        { description: 'With doc no.', amountCents: 100, reference: '  ICS-000024  ' },
+        { description: 'Without doc no.', amountCents: 200 },
+      ],
+      payment: BANK, attachmentIds: ids, resubmit: false, saveBankToProfile: false,
+    });
+    const c = (await getClaim(t.deps.db, claimId))!;
+    expect(c.items[0]!.reference).toBe('ICS-000024');
+    expect(c.items[1]).not.toHaveProperty('reference');
+  });
+
   it('rejects upload sessions with bad files', async () => {
     const t = makeTestDeps();
     const alice = await seedActor(t.deps, 'alice');
