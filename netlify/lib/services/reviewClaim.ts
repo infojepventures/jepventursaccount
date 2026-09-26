@@ -7,6 +7,7 @@ import { assertAdmin, type Actor } from '../actor';
 import type { Deps } from '../deps';
 import { fail } from '../errors';
 import { CLAIM_SEQ_DOC, claimRef, COL } from '../firestore';
+import { notifyClaimEvent } from './notify';
 import { startPdf } from './pdfTrigger';
 import { syncClaimToSheet } from './sheetSync';
 
@@ -63,6 +64,7 @@ export async function reviewClaim(deps: Deps, actor: Actor, req: ReviewClaimRequ
   });
 
   await syncClaimToSheet(deps, req.claimId);
+  await notifyClaimEvent(deps, result.status === 'approved' ? 'approved' : 'rejected', req.claimId, actor.uid);
   if (result.status === 'approved') await startPdf(deps, req.claimId, requestId);
   return result;
 }

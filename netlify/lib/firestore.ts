@@ -3,6 +3,7 @@ import type { ClaimDoc } from '@jep/shared';
 
 export const COL = {
   users: 'users', claims: 'claims', invites: 'invites', counters: 'counters', uploadFolders: 'uploadFolders',
+  pushTokens: 'pushTokens',
 } as const;
 export const CLAIM_SEQ_DOC = 'claimSeq';
 

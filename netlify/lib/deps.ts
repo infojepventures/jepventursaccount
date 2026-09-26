@@ -1,10 +1,12 @@
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getMessaging } from 'firebase-admin/messaging';
 import { loadPdfAssets, type PdfAssets } from './assets';
 import { DriveClient, type DriveApi } from './drive';
 import { env } from './env';
 import { getAdminApp } from './firebaseAdmin';
 import { createTokenProvider, SCOPES } from './googleAuth';
+import { FcmPush, type PushApi } from './push';
 import { SheetsClient, type SheetsApi } from './sheets';
 
 export interface Deps {
@@ -12,6 +14,7 @@ export interface Deps {
   auth: Auth;
   drive: DriveApi;
   sheets: SheetsApi;
+  push: PushApi;
   rootFolderId: string;
   now: () => Date;
   newId: () => string;
@@ -38,6 +41,7 @@ function createDeps(): Deps {
     auth: getAuth(app),
     drive: new DriveClient(getToken),
     sheets: new SheetsClient(getToken, env('GOOGLE_SHEET_ID')),
+    push: new FcmPush(getMessaging(app)),
     rootFolderId: env('GOOGLE_ROOT_FOLDER_ID'),
     now: () => new Date(),
     newId: () => crypto.randomUUID(),

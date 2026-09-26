@@ -8,6 +8,7 @@ import { assertCan } from '../claimAccess';
 import type { Deps } from '../deps';
 import { fail } from '../errors';
 import { claimRef } from '../firestore';
+import { notifyClaimEvent } from './notify';
 import { startPdf } from './pdfTrigger';
 import { syncClaimToSheet } from './sheetSync';
 
@@ -54,6 +55,7 @@ export async function markPaid(deps: Deps, actor: Actor, req: MarkPaidRequest): 
       history: history(cur, actor, 'mark_paid', now, `${req.paidDate} ${reference}`.trim()),
     };
   });
+  await notifyClaimEvent(deps, 'paid', req.claimId, actor.uid);
   return { status: 'paid' };
 }
 

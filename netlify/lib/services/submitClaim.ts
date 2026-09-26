@@ -10,6 +10,7 @@ import { assertCan } from '../claimAccess';
 import type { Deps } from '../deps';
 import { fail, isAlreadyExists } from '../errors';
 import { claimRef, COL, getClaim, userRef } from '../firestore';
+import { notifyClaimEvent } from './notify';
 import { startPdf } from './pdfTrigger';
 import { syncClaimToSheet } from './sheetSync';
 
@@ -131,6 +132,7 @@ export async function submitClaim(deps: Deps, actor: Actor, req: SubmitClaimRequ
 
   if (req.saveBankToProfile) await userRef(deps.db, actor.uid).update({ bank: payment, updatedAt: now });
   await syncClaimToSheet(deps, req.claimId);
+  await notifyClaimEvent(deps, req.resubmit ? 'resubmitted' : 'submitted', req.claimId, actor.uid);
   await startPdf(deps, req.claimId, requestId);
   return { claimId: req.claimId };
 }

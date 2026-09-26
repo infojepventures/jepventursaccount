@@ -13,6 +13,8 @@ export const API = {
   adminUsers: 'admin-users',
   resyncSheet: 'resync-sheet',
   health: 'health',
+  registerPushToken: 'register-push-token',
+  unregisterPushToken: 'unregister-push-token',
 } as const;
 
 export type ErrorCode =
@@ -110,4 +112,13 @@ export interface AdminUsersResponse {
 export interface ResyncSheetResponse {
   synced: number;
   failed: number;
+}
+
+export interface RegisterPushTokenRequest {
+  token: string;
+  platform: 'android' | 'ios';
+}
+
+export interface UnregisterPushTokenRequest {
+  token: string;
 }

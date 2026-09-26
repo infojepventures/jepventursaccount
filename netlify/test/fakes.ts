@@ -1,5 +1,6 @@
 import type { DriveApi, DriveFileMeta } from '../lib/drive';
 import { FOLDER_MIME } from '../lib/drive';
+import type { PushApi, PushMessage } from '../lib/push';
 import type { SheetRow, SheetsApi } from '../lib/sheets';
 
 interface FakeFile extends DriveFileMeta {
@@ -109,5 +110,17 @@ export class FakeSheets implements SheetsApi {
 
   async deleteClaimRow(claimId: string) {
     this.rows.delete(claimId);
+  }
+}
+
+export class FakePush implements PushApi {
+  calls: { tokens: string[]; msg: PushMessage }[] = [];
+  invalid = new Set<string>();
+  shouldThrow = false;
+
+  async send(tokens: string[], msg: PushMessage): Promise<{ invalidTokens: string[] }> {
+    this.calls.push({ tokens, msg });
+    if (this.shouldThrow) throw new Error('FCM unavailable');
+    return { invalidTokens: tokens.filter((t) => this.invalid.has(t)) };
   }
 }

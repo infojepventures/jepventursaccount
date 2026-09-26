@@ -95,3 +95,14 @@ describe('invites and counters', () => {
     await assertFails(setDoc(doc(as('boss'), 'counters/claimSeq'), { next: 99 }));
   });
 });
+
+describe('pushTokens', () => {
+  it('clients cannot read or write, even their own', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'pushTokens/tok1'), { uid: 'alice', platform: 'android' });
+    });
+    await assertFails(getDoc(doc(as('alice'), 'pushTokens/tok1')));
+    await assertFails(getDoc(doc(as('boss'), 'pushTokens/tok1')));
+    await assertFails(setDoc(doc(as('alice'), 'pushTokens/tok2'), { uid: 'alice', platform: 'android' }));
+  });
+});
