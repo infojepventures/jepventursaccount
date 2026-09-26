@@ -15,6 +15,7 @@ export const API = {
   health: 'health',
   registerPushToken: 'register-push-token',
   unregisterPushToken: 'unregister-push-token',
+  analyzeAttachment: 'analyze-attachment',
 } as const;
 
 export type ErrorCode =
@@ -27,7 +28,8 @@ export type ErrorCode =
   | 'STATUS_CHANGED'
   | 'FILE_TOO_LARGE'
   | 'METHOD_NOT_ALLOWED'
-  | 'INTERNAL';
+  | 'INTERNAL'
+  | 'OCR_FAILED';
 
 export interface ApiErrorBody {
   error: ErrorCode;
@@ -121,4 +123,24 @@ export interface RegisterPushTokenRequest {
 
 export interface UnregisterPushTokenRequest {
   token: string;
+}
+
+export interface AnalyzeAttachmentRequest {
+  claimId: string;
+  fileId: string;
+}
+
+export interface AttachmentSuggestion {
+  reference?: string;
+  description?: string;
+  amountCents?: number;
+  payee?: {
+    accountHolder?: string;
+    bankName?: string;
+    accountNumber?: string;
+  };
+}
+
+export interface AnalyzeAttachmentResponse {
+  suggestion: AttachmentSuggestion;
 }

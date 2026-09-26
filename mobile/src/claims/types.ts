@@ -10,6 +10,12 @@ export interface LocalAttachment {
   uploadedId?: string;
   progress?: number;
   error?: string;
+  /** Set while the OCR request for this (already-uploaded) attachment is in flight. */
+  analyzing?: boolean;
+  /** Set once analysis has been attempted (success or failure), so it is not retried on rerender. */
+  analyzed?: boolean;
+  /** Set when the OCR request failed; cleared on a fresh attempt. */
+  analyzeError?: string;
 }
 
 export interface RemoteAttachment {

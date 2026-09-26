@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { formatRM, MAX_ATTACHMENTS } from '@jep/shared';
+import { applySuggestion } from '../claims/applySuggestion';
 import { draftErrors, draftTotalCents, emptyItem, type ClaimDraft, type DraftItem } from '../claims/draft';
 import { pickFromCamera, pickFromLibrary, pickPdfs } from '../claims/pickers';
 import { putFile } from '../claims/putFile';
-import { runSubmitFlow } from '../claims/submitFlow';
+import { runSubmitFlow, uploadPendingAttachments } from '../claims/submitFlow';
 import type { AnyAttachment, LocalAttachment } from '../claims/types';
 import { friendlyMessage } from '../lib/api';
 import { api } from '../lib/apiInstance';
@@ -28,23 +29,71 @@ export function ClaimForm(p: {
   const [attachments, setAttachments] = useState<AnyAttachment[]>(p.initialAttachments);
   const [submitting, setSubmitting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
+  const [aiFields, setAiFields] = useState<Set<string>>(new Set());
+  const payeeEditedByUser = useRef(false);
 
   const errors = draftErrors(draft, attachments.length);
   const remaining = MAX_ATTACHMENTS - attachments.length;
 
-  const setItem = (key: string, patch: Partial<DraftItem>) =>
+  const clearAiFields = (keys: string[]) =>
+    setAiFields((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(prev);
+      let changed = false;
+      for (const k of keys) if (next.delete(k)) changed = true;
+      return changed ? next : prev;
+    });
+
+  const setItem = (key: string, patch: Partial<DraftItem>) => {
     setDraft((d) => ({ ...d, items: d.items.map((i) => (i.key === key ? { ...i, ...patch } : i)) }));
-  const setBank = (patch: Partial<ClaimDraft['bank']>) => setDraft((d) => ({ ...d, bank: { ...d.bank, ...patch } }));
+    clearAiFields(Object.keys(patch).map((field) => `item:${key}:${field}`));
+  };
+  const setBank = (patch: Partial<ClaimDraft['bank']>) => {
+    payeeEditedByUser.current = true;
+    setDraft((d) => ({ ...d, bank: { ...d.bank, ...patch } }));
+    clearAiFields(Object.keys(patch).map((field) => `bank:${field}`));
+  };
+
+  const patchAttachment = (key: string, patch: Partial<LocalAttachment>) =>
+    setAttachments((list) => list.map((a) => (a.key === key && a.kind === 'local' ? { ...a, ...patch } : a)));
+
+  const analyzeAttachment = async (key: string, fileId: string) => {
+    patchAttachment(key, { analyzing: true, analyzeError: undefined });
+    try {
+      const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId });
+      let newAi = new Set<string>();
+      setDraft((d) => {
+        const result = applySuggestion(d, suggestion, { payeeEditedByUser: payeeEditedByUser.current });
+        newAi = result.aiFields;
+        return result.draft;
+      });
+      if (newAi.size) setAiFields((prev) => new Set([...prev, ...newAi]));
+      patchAttachment(key, { analyzing: false, analyzed: true });
+    } catch {
+      patchAttachment(key, { analyzing: false, analyzed: true, analyzeError: "Couldn't read this receipt" });
+    }
+  };
+
+  const onAttachmentUpdate = (key: string, patch: Partial<LocalAttachment>) => {
+    patchAttachment(key, patch);
+    if (patch.uploadedId) void analyzeAttachment(key, patch.uploadedId);
+  };
+
   const addFiles = async (pick: () => Promise<LocalAttachment[]>) => {
     try {
       const picked = await pick();
+      if (picked.length === 0) return;
       setAttachments((a) => [...a, ...picked].slice(0, MAX_ATTACHMENTS));
+      try {
+        await uploadPendingAttachments(api, putFile, p.claimId, picked, onAttachmentUpdate);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Upload failed';
+        for (const file of picked) patchAttachment(file.key, { error: message, progress: undefined });
+      }
     } catch (e) {
       Alert.alert('Could not add file', friendlyMessage(e));
     }
   };
-  const patchAttachment = (key: string, patch: Partial<LocalAttachment>) =>
-    setAttachments((list) => list.map((a) => (a.key === key && a.kind === 'local' ? { ...a, ...patch } : a)));
 
   const submit = async () => {
     setShowErrors(true);
@@ -85,12 +134,14 @@ export function ClaimForm(p: {
               onChangeText={(t) => setItem(item.key, { reference: t })}
               autoCapitalize="characters"
               placeholder="e.g. ICS-000024"
+              badge={aiFields.has(`item:${item.key}:reference`) ? 'AI' : undefined}
             />
             <TextField
               label="Description / purpose"
               value={item.description}
               onChangeText={(t) => setItem(item.key, { description: t })}
               placeholder="e.g. Parking at client office"
+              badge={aiFields.has(`item:${item.key}:description`) ? 'AI' : undefined}
             />
             <TextField
               label="Amount (RM)"
@@ -98,6 +149,7 @@ export function ClaimForm(p: {
               onChangeText={(t) => setItem(item.key, { amount: t })}
               keyboardType="decimal-pad"
               placeholder="0.00"
+              badge={aiFields.has(`item:${item.key}:amount`) ? 'AI' : undefined}
             />
           </View>
         ))}
@@ -122,9 +174,26 @@ export function ClaimForm(p: {
       </Section>
 
       <Section title="Pay to">
-        <TextField label="Bank" value={draft.bank.bankName} onChangeText={(t) => setBank({ bankName: t })} />
-        <TextField label="Account holder" value={draft.bank.accountHolder} onChangeText={(t) => setBank({ accountHolder: t })} autoCapitalize="words" />
-        <TextField label="Account number" value={draft.bank.accountNumber} onChangeText={(t) => setBank({ accountNumber: t })} keyboardType="number-pad" />
+        <TextField
+          label="Bank"
+          value={draft.bank.bankName}
+          onChangeText={(t) => setBank({ bankName: t })}
+          badge={aiFields.has('bank:bankName') ? 'AI' : undefined}
+        />
+        <TextField
+          label="Account holder"
+          value={draft.bank.accountHolder}
+          onChangeText={(t) => setBank({ accountHolder: t })}
+          autoCapitalize="words"
+          badge={aiFields.has('bank:accountHolder') ? 'AI' : undefined}
+        />
+        <TextField
+          label="Account number"
+          value={draft.bank.accountNumber}
+          onChangeText={(t) => setBank({ accountNumber: t })}
+          keyboardType="number-pad"
+          badge={aiFields.has('bank:accountNumber') ? 'AI' : undefined}
+        />
         {p.showSaveBank ? (
           <View style={styles.switchRow}>
             <Text style={styles.switchLabel}>Also save to my profile</Text>

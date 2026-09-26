@@ -1,5 +1,5 @@
 import { emptyDraft } from './draft';
-import { runSubmitFlow } from './submitFlow';
+import { runSubmitFlow, uploadPendingAttachments } from './submitFlow';
 import type { AnyAttachment, LocalAttachment } from './types';
 
 const bank = { bankName: 'Maybank', accountHolder: 'Tan', accountNumber: '1234' };
@@ -71,5 +71,41 @@ describe('runSubmitFlow', () => {
     await runSubmitFlow(deps as never, { claimId: 'C1', draft, attachments: [local('a', { uploadedId: 'done' })], resubmit: false }, () => {});
     expect(deps.api.uploadSession).not.toHaveBeenCalled();
     expect(deps.api.submitClaim).toHaveBeenCalledWith(expect.objectContaining({ attachmentIds: ['done'] }));
+  });
+});
+
+describe('uploadPendingAttachments', () => {
+  it('uploads only local files without an uploadedId, and reports failures without throwing', async () => {
+    const deps = makeDeps(['b.jpg']);
+    const updates = new Map<string, Partial<LocalAttachment>>();
+    const onUpdate = (k: string, p: Partial<LocalAttachment>) => updates.set(k, { ...updates.get(k), ...p });
+
+    const result = await uploadPendingAttachments(
+      deps.api as never,
+      deps.putFile,
+      'C1',
+      [local('a'), local('b'), local('c', { uploadedId: 'already' })],
+      onUpdate,
+    );
+
+    expect(deps.api.uploadSession).toHaveBeenCalledWith({
+      claimId: 'C1',
+      files: [
+        { name: 'a.jpg', mimeType: 'image/jpeg', size: 100 },
+        { name: 'b.jpg', mimeType: 'image/jpeg', size: 100 },
+      ],
+    });
+    expect(result.failed).toBe(true);
+    expect(result.uploaded.get('a')).toBe('id-a.jpg');
+    expect(result.uploaded.get('c')).toBe('already');
+    expect(result.uploaded.has('b')).toBe(false);
+    expect(updates.get('b')?.error).toBe('boom');
+  });
+
+  it('does nothing when there are no pending files', async () => {
+    const deps = makeDeps();
+    const result = await uploadPendingAttachments(deps.api as never, deps.putFile, 'C1', [local('a', { uploadedId: 'x' })], () => {});
+    expect(deps.api.uploadSession).not.toHaveBeenCalled();
+    expect(result).toEqual({ uploaded: new Map([['a', 'x']]), failed: false });
   });
 });

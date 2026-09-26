@@ -78,6 +78,8 @@ export function AttachmentList({
               <View style={styles.bar}><View style={[styles.fill, { width: `${Math.round(a.progress * 100)}%` }]} /></View>
             ) : null}
             {a.kind === 'local' && a.error ? <Text style={styles.error}>Upload failed</Text> : null}
+            {a.kind === 'local' && !a.error && a.analyzing ? <Text style={styles.hint}>Reading receipt…</Text> : null}
+            {a.kind === 'local' && !a.error && !a.analyzing && a.analyzeError ? <Text style={styles.hint}>{a.analyzeError}</Text> : null}
             {a.kind === 'local' && a.uploadedId ? <Ionicons name="checkmark-circle" size={16} color={colors.success} style={styles.ok} /> : null}
             {onRemove ? (
               <Pressable hitSlop={10} style={styles.remove} onPress={() => onRemove(a.key)} accessibilityLabel={`Remove ${a.name}`}>
@@ -97,6 +99,7 @@ const styles = StyleSheet.create({
   thumb: { width: 96, height: 96, borderRadius: radius, backgroundColor: colors.border },
   pdf: { alignItems: 'center', justifyContent: 'center' },
   name: { fontSize: 11, color: colors.muted },
+  hint: { fontSize: 10, color: colors.muted },
   bar: { height: 4, borderRadius: 2, backgroundColor: colors.border, overflow: 'hidden' },
   fill: { height: 4, backgroundColor: colors.primary },
   error: { fontSize: 11, color: colors.danger },

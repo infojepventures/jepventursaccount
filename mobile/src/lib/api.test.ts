@@ -63,6 +63,15 @@ describe('createApi', () => {
     expect(calls[0]!.url).toBe('https://api.test/.netlify/functions/unregister-push-token');
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ token: 'TOKEN1' });
   });
+
+  it('analyzes an attachment', async () => {
+    const suggestion = { reference: 'INV-1', amountCents: 1050 };
+    const { api, calls } = setup(async () => new Response(JSON.stringify({ suggestion }), { status: 200 }));
+    const res = await api.analyzeAttachment({ claimId: 'c1', fileId: 'f1' });
+    expect(res).toEqual({ suggestion });
+    expect(calls[0]!.url).toBe('https://api.test/.netlify/functions/analyze-attachment');
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ claimId: 'c1', fileId: 'f1' });
+  });
 });
 
 describe('friendlyMessage', () => {
