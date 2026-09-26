@@ -8,6 +8,7 @@ import { isProfileComplete, type UserDoc } from '@jep/shared';
 import { ApiClientError, friendlyMessage } from '../lib/api';
 import { api } from '../lib/apiInstance';
 import { auth, db } from '../lib/firebase';
+import { lastRegisteredToken, registerForPush } from '../notifications/push';
 import type { AuthStatus } from './routeFor';
 
 export type AppUser = UserDoc & { uid: string };
@@ -40,6 +41,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const genRef = useRef(0);
   const unsubUserRef = useRef<(() => void) | undefined>(undefined);
+  const pushRegisteredUidRef = useRef<string | null>(null);
+  const pushUnsubRef = useRef<(() => void) | undefined>(undefined);
+
+  const stopPushRegistration = useCallback(() => {
+    pushRegisteredUidRef.current = null;
+    pushUnsubRef.current?.();
+    pushUnsubRef.current = undefined;
+  }, []);
+
+  const startPushRegistration = useCallback((uid: string) => {
+    if (pushRegisteredUidRef.current === uid) return;
+    pushRegisteredUidRef.current = uid;
+    pushUnsubRef.current?.();
+    pushUnsubRef.current = undefined;
+    void registerForPush(api).then((unsub) => {
+      // If the user changed (or signed out) while registering, discard this subscription.
+      if (pushRegisteredUidRef.current === uid) {
+        pushUnsubRef.current = unsub;
+      } else {
+        unsub();
+      }
+    });
+  }, []);
 
   // Shared by the auth-state listener and retrySession, so a retry invalidates any in-flight run.
   const startSessionFlow = useCallback(async (fu: { uid: string }) => {
@@ -52,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (my !== genRef.current) return;
       setError(friendlyMessage(e));
       if (e instanceof ApiClientError && SESSION_FATAL_CODES.has(e.code)) {
+        stopPushRegistration();
         await signOutEverywhere();
       } else {
         // Transient failure (network, server error, …): keep the session and let the user retry.
@@ -67,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!snap.exists()) return;
         const u = snap.data() as UserDoc;
         if (!u.active) {
+          stopPushRegistration();
           setError('This account has been deactivated. Please contact an admin.');
           void signOutEverywhere();
           return;
@@ -74,13 +100,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setError(null);
         setUser({ uid: fu.uid, ...u });
         setStatus('signedIn');
+        startPushRegistration(fu.uid);
       },
       (err) => {
         if (my !== genRef.current) return;
         setError(err.message);
       },
     );
-  }, []);
+  }, [startPushRegistration, stopPushRegistration]);
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (fu) => {
@@ -88,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         unsubUserRef.current?.();
         unsubUserRef.current = undefined;
         genRef.current++;
+        stopPushRegistration();
         setUser(null);
         setStatus('signedOut');
         return;
@@ -123,6 +151,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signInWithEmailAndPassword(auth, email.trim(), password);
   }, []);
 
+  const signOut = useCallback(async () => {
+    stopPushRegistration();
+    const token = lastRegisteredToken();
+    if (token) {
+      await api.unregisterPushToken({ token }).catch(() => undefined);
+    }
+    await signOutEverywhere();
+  }, [stopPushRegistration]);
+
   const value = useMemo<AuthValue>(
     () => ({
       status,
@@ -132,10 +169,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileComplete: user ? isProfileComplete(user) : false,
       signInWithGoogle,
       signInWithEmail,
-      signOut: signOutEverywhere,
+      signOut,
       retrySession,
     }),
-    [status, user, error, signInWithGoogle, signInWithEmail, retrySession],
+    [status, user, error, signInWithGoogle, signInWithEmail, signOut, retrySession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

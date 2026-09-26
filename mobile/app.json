@@ -18,7 +18,8 @@
       "expo-router",
       "@react-native-google-signin/google-signin",
       ["expo-image-picker", { "cameraPermission": "Allow JEP Claims to take photos of your receipts." }],
-      ["expo-splash-screen", { "image": "./assets/splash-icon.png", "imageWidth": 200, "backgroundColor": "#111111" }]
+      ["expo-splash-screen", { "image": "./assets/splash-icon.png", "imageWidth": 200, "backgroundColor": "#111111" }],
+      ["expo-notifications", { "color": "#111111" }]
     ],
     "experiments": { "typedRoutes": true }
   }

@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import { routeFor } from '../auth/routeFor';
+import { useNotificationTapNavigation } from '../notifications/push';
 import { colors, space } from '../ui/theme';
 
 function Gate() {
@@ -12,6 +13,7 @@ function Gate() {
   const segments = useSegments();
   const router = useRouter();
   const first = segments[0] as string | undefined;
+  useNotificationTapNavigation();
 
   useEffect(() => {
     const target = routeFor(auth, first);

@@ -47,6 +47,22 @@ describe('createApi', () => {
     expect(api.fileUrl('c 1', 'f/2')).toBe('https://api.test/.netlify/functions/file-proxy?claimId=c%201&fileId=f%2F2');
     expect(await api.authHeaders()).toEqual({ Authorization: 'Bearer ID_TOKEN' });
   });
+
+  it('registers a push token', async () => {
+    const { api, calls } = setup(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const res = await api.registerPushToken({ token: 'TOKEN1', platform: 'android' });
+    expect(res).toEqual({ ok: true });
+    expect(calls[0]!.url).toBe('https://api.test/.netlify/functions/register-push-token');
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ token: 'TOKEN1', platform: 'android' });
+  });
+
+  it('unregisters a push token', async () => {
+    const { api, calls } = setup(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const res = await api.unregisterPushToken({ token: 'TOKEN1' });
+    expect(res).toEqual({ ok: true });
+    expect(calls[0]!.url).toBe('https://api.test/.netlify/functions/unregister-push-token');
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ token: 'TOKEN1' });
+  });
 });
 
 describe('friendlyMessage', () => {
