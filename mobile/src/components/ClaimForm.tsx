@@ -3,6 +3,7 @@ import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { formatRM, MAX_ATTACHMENTS } from '@jep/shared';
 import { applySuggestion } from '../claims/applySuggestion';
 import { draftErrors, draftTotalCents, emptyItem, type ClaimDraft, type DraftItem } from '../claims/draft';
+import { recognizeText } from '../claims/ocr';
 import { pickFromCamera, pickFromLibrary, pickPdfs } from '../claims/pickers';
 import { putFile } from '../claims/putFile';
 import { runSubmitFlow, uploadPendingAttachments } from '../claims/submitFlow';
@@ -57,10 +58,12 @@ export function ClaimForm(p: {
   const patchAttachment = (key: string, patch: Partial<LocalAttachment>) =>
     setAttachments((list) => list.map((a) => (a.key === key && a.kind === 'local' ? { ...a, ...patch } : a)));
 
-  const analyzeAttachment = async (key: string, fileId: string) => {
+  const analyzeAttachment = async (key: string, fileId: string, mimeType: string, uri: string) => {
     patchAttachment(key, { analyzing: true, analyzeError: undefined });
     try {
-      const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId });
+      // PDFs are text-extracted server-side; images need on-device OCR text sent along.
+      const text = mimeType === 'application/pdf' ? undefined : (await recognizeText(uri)) ?? undefined;
+      const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId, ...(text ? { text } : {}) });
       let newAi = new Set<string>();
       setDraft((d) => {
         const result = applySuggestion(d, suggestion, { payeeEditedByUser: payeeEditedByUser.current });
@@ -74,16 +77,17 @@ export function ClaimForm(p: {
     }
   };
 
-  const onAttachmentUpdate = (key: string, patch: Partial<LocalAttachment>) => {
-    patchAttachment(key, patch);
-    if (patch.uploadedId) void analyzeAttachment(key, patch.uploadedId);
-  };
-
   const addFiles = async (pick: () => Promise<LocalAttachment[]>) => {
     try {
       const picked = await pick();
       if (picked.length === 0) return;
       setAttachments((a) => [...a, ...picked].slice(0, MAX_ATTACHMENTS));
+      const byKey = new Map(picked.map((f) => [f.key, f]));
+      const onAttachmentUpdate = (key: string, patch: Partial<LocalAttachment>) => {
+        patchAttachment(key, patch);
+        const file = patch.uploadedId ? byKey.get(key) : undefined;
+        if (file) void analyzeAttachment(key, patch.uploadedId!, file.mimeType, file.uri);
+      };
       try {
         await uploadPendingAttachments(api, putFile, p.claimId, picked, onAttachmentUpdate);
       } catch (e) {

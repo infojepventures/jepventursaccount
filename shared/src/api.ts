@@ -128,6 +128,8 @@ export interface UnregisterPushTokenRequest {
 export interface AnalyzeAttachmentRequest {
   claimId: string;
   fileId: string;
+  /** On-device OCR text for image attachments (PDFs are extracted server-side). Max 20,000 chars. */
+  text?: string;
 }
 
 export interface AttachmentSuggestion {
