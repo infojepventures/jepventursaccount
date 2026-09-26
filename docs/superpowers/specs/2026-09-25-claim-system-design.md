@@ -274,3 +274,15 @@ Planning amendments (2026-09-26):
 - Device tokens: `pushTokens/{token}` = `{ uid, platform, updatedAt }`, with no client access in the rules. The app registers the FCM device token after sign-in through `register-push-token`, and again on token refresh. Registering reassigns a token to the current user. The app calls `unregister-push-token` before sign-out.
 - Sending is best-effort. It runs after the claim write and the Sheet sync; failures are logged and never fail the API call. Tokens that FCM reports as unregistered or invalid are deleted.
 - Not notified in v1: cancellation and PDF ready.
+
+## 15. Attachment OCR (added 2026-09-26, approved)
+
+- Engine: Google Document AI **Invoice Parser**, region asia-southeast1. The endpoint is in env `DOCUMENT_AI_ENDPOINT`; calls use the service account with scope `cloud-platform` (role Document AI API User). Billing must be enabled.
+- Flow: when an attachment is picked in New Claim or Edit, the app uploads it to Drive immediately through the existing resumable upload flow, then calls `analyze-attachment { claimId, fileId }`. The server checks the caller owns the claim folder binding (new claims: `uploadFolders/{claimId}.uid`; resubmits: the claim applicant) and that the file sits in that folder. It then downloads the file, runs Document AI (inline; at most 20MB and 15 pages) and returns suggestions.
+- Suggestions: `{ reference, description, amountCents, payee: { accountHolder, bankName, accountNumber } }`, each field optional.
+  - `reference` comes from `invoice_id`, falling back to `receipt_id`.
+  - `description` comes from the first `line_item/description`, falling back to `supplier_name`.
+  - `amountCents` comes from `total_amount`, falling back to `net_amount` (normalised).
+  - `accountHolder` comes from `supplier_name`, falling back to `remit_to_name`.
+  - `bankName` and `accountNumber` come from rules applied to the full text: a list of Malaysian banks, and a 6–20 digit number near "account" / "acc" / "a/c" / "no" labels.
+- App behaviour: each analysed attachment adds one item (Doc No., description and amount prefilled; an empty first item is replaced). The first attachment with payee details overwrites Pay to, unless the user edited Pay to in this form. Prefilled fields are marked "AI" until edited. Failures are silent apart from a small "Couldn't read this receipt" hint; manual entry always works. Submission is unchanged.
