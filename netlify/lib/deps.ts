@@ -19,7 +19,7 @@ export interface Deps {
   push: PushApi;
   /** Null when DOCUMENT_AI_ENDPOINT is unset — Document AI is optional; OCR falls back to the free path. */
   docai: DocAiApi | null;
-  /** Null when TINYURL_API_TOKEN is unset: PDFs are then shared with their full Drive link. */
+  /** TinyURL (free endpoint, or the API when TINYURL_API_TOKEN is set). Null disables short links. */
   shortener: ShortenerApi | null;
   rootFolderId: string;
   now: () => Date;
@@ -60,7 +60,7 @@ function createDeps(): Deps {
     sheets: new SheetsClient(getToken, env('GOOGLE_SHEET_ID')),
     push: new FcmPush(getMessaging(app)),
     docai,
-    shortener: process.env.TINYURL_API_TOKEN ? new TinyUrlClient(process.env.TINYURL_API_TOKEN) : null,
+    shortener: new TinyUrlClient(process.env.TINYURL_API_TOKEN || undefined),
     rootFolderId: env('GOOGLE_ROOT_FOLDER_ID'),
     now: () => new Date(),
     newId: () => crypto.randomUUID(),

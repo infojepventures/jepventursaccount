@@ -39,4 +39,30 @@ describe('TinyUrlClient', () => {
     await expect(new TinyUrlClient('tok', fakeFetch(json({ data: { tiny_url: 'javascript:alert(1)' } })).impl).shorten('https://x.test')).rejects.toThrow();
     await expect(new TinyUrlClient('tok', fakeFetch(json({ data: {} })).impl).shorten('https://x.test')).rejects.toThrow();
   });
+
+  describe('without a token (the free api-create.php endpoint)', () => {
+    const text = (body: string, status = 200) => new Response(body, { status });
+
+    it('GETs api-create.php with the URL encoded, and returns the https link', async () => {
+      const f = fakeFetch(text('https://tinyurl.com/2p8xk3ab'));
+      const url = await new TinyUrlClient(undefined, f.impl).shorten('https://drive.google.com/file/d/F1/view?usp=a&b=c');
+
+      expect(url).toBe('https://tinyurl.com/2p8xk3ab');
+      expect(f.calls[0]!.url).toBe(
+        'https://tinyurl.com/api-create.php?url=' + encodeURIComponent('https://drive.google.com/file/d/F1/view?usp=a&b=c'),
+      );
+      expect(f.calls[0]!.init.method ?? 'GET').toBe('GET');
+    });
+
+    it('upgrades an http:// answer to https://', async () => {
+      expect(await new TinyUrlClient(undefined, fakeFetch(text('http://tinyurl.com/abc123\n')).impl).shorten('https://x.test')).toBe(
+        'https://tinyurl.com/abc123',
+      );
+    });
+
+    it('throws on "Error" bodies and error statuses', async () => {
+      await expect(new TinyUrlClient(undefined, fakeFetch(text('Error')).impl).shorten('https://x.test')).rejects.toThrow();
+      await expect(new TinyUrlClient(undefined, fakeFetch(text('busy', 503)).impl).shorten('https://x.test')).rejects.toThrow('503');
+    });
+  });
 });
