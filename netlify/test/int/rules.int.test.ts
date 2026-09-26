@@ -106,3 +106,14 @@ describe('pushTokens', () => {
     await assertFails(setDoc(doc(as('alice'), 'pushTokens/tok2'), { uid: 'alice', platform: 'android' }));
   });
 });
+
+describe('appConfig', () => {
+  it('signed-in users can read the app version config; nobody writes it from the client', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'appConfig/android'), { latestVersionCode: 4, apkUrl: 'https://expo.dev/a.apk' });
+    });
+    await assertSucceeds(getDoc(doc(as('alice'), 'appConfig/android')));
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), 'appConfig/android')));
+    await assertFails(setDoc(doc(as('boss'), 'appConfig/android'), { latestVersionCode: 99, apkUrl: 'https://evil.test/x.apk' }));
+  });
+});

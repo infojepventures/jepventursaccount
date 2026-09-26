@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import { routeFor } from '../auth/routeFor';
 import { useNotificationTapNavigation } from '../notifications/push';
 import { colors, space } from '../ui/theme';
+import { UpdateBanner } from '../updates/UpdateBanner';
 
 function Gate() {
   const auth = useAuth();
@@ -66,6 +67,7 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <AuthProvider>
         <Gate />
+        <UpdateBanner />
       </AuthProvider>
     </SafeAreaProvider>
   );
