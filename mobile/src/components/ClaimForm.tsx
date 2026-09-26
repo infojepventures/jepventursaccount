@@ -80,6 +80,13 @@ export function ClaimForm(p: {
               ) : null}
             </View>
             <TextField
+              label="Doc No. (optional)"
+              value={item.reference}
+              onChangeText={(t) => setItem(item.key, { reference: t })}
+              autoCapitalize="characters"
+              placeholder="e.g. ICS-000024"
+            />
+            <TextField
               label="Description / purpose"
               value={item.description}
               onChangeText={(t) => setItem(item.key, { description: t })}

@@ -8,6 +8,7 @@ export interface DraftItem {
   key: string;
   description: string;
   amount: string;
+  reference: string;
 }
 
 export interface ClaimDraft {
@@ -17,7 +18,7 @@ export interface ClaimDraft {
 }
 
 const EMPTY_BANK: BankDetails = { bankName: '', accountHolder: '', accountNumber: '' };
-export const emptyItem = (): DraftItem => ({ key: newKey(), description: '', amount: '' });
+export const emptyItem = (): DraftItem => ({ key: newKey(), description: '', amount: '', reference: '' });
 
 export function emptyDraft(bank: BankDetails | null): ClaimDraft {
   return { items: [emptyItem()], bank: bank ? { ...bank } : { ...EMPTY_BANK }, saveBankToProfile: false };
@@ -25,7 +26,12 @@ export function emptyDraft(bank: BankDetails | null): ClaimDraft {
 
 export function draftFromClaim(c: ClaimDoc): ClaimDraft {
   return {
-    items: c.items.map((i) => ({ key: newKey(), description: i.description, amount: formatCents(i.amountCents) })),
+    items: c.items.map((i) => ({
+      key: newKey(),
+      description: i.description,
+      amount: formatCents(i.amountCents),
+      reference: i.reference ?? '',
+    })),
     bank: { ...c.payment },
     saveBankToProfile: false,
   };
@@ -59,5 +65,12 @@ export function draftErrors(d: ClaimDraft, attachmentCount: number): string[] {
 }
 
 export function draftToItems(d: ClaimDraft): ClaimItem[] {
-  return d.items.map((i) => ({ description: i.description.trim(), amountCents: parseAmountToCents(i.amount) ?? 0 }));
+  return d.items.map((i) => {
+    const reference = i.reference.trim();
+    return {
+      description: i.description.trim(),
+      amountCents: parseAmountToCents(i.amount) ?? 0,
+      ...(reference ? { reference } : {}),
+    };
+  });
 }

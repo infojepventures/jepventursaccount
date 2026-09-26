@@ -134,7 +134,11 @@ export default function ClaimDetailScreen() {
 
         <Section title="Items">
           {claim.items.map((it, i) => (
-            <Row key={i} label={`${i + 1}. ${it.description}`} value={formatRM(it.amountCents)} />
+            <Row
+              key={i}
+              label={`${i + 1}. ${it.reference ? `${it.reference} · ` : ''}${it.description}`}
+              value={formatRM(it.amountCents)}
+            />
           ))}
           <Row label="Total" value={formatRM(claim.totalCents)} />
         </Section>

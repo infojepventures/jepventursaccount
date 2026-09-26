@@ -3,7 +3,7 @@ import { formatRM } from '@jep/shared';
 export interface WhatsAppClaimTextInput {
   refNo: string;
   totalCents: number;
-  items: { description: string; amountCents: number }[];
+  items: { description: string; amountCents: number; reference?: string }[];
   payment: { bankName: string; accountHolder: string; accountNumber: string };
   pdf: { driveFileId: string | null; fileName: string | null };
 }
@@ -46,7 +46,7 @@ function buildGroupText(claims: WhatsAppClaimTextInput[]): string {
 
     claim.items.forEach((item, ii) => {
       lines.push(`> ${clean(item.description)}`);
-      lines.push(`${refNo} - ${formatRM(item.amountCents)}`);
+      lines.push(`${clean(item.reference ?? '') || refNo} - ${formatRM(item.amountCents)}`);
       if (ii < claim.items.length - 1) lines.push('');
     });
 

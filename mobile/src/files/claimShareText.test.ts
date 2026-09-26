@@ -85,6 +85,38 @@ describe('buildWhatsAppClaimText', () => {
   });
 });
 
+describe('buildWhatsAppClaimText with a per-item reference', () => {
+  it('uses the reference in place of the ref no. when present, and keeps ref no. for items without one', () => {
+    const claim = {
+      ...baseClaim,
+      items: [
+        { description: 'Parkinh', amountCents: 1000, reference: 'ICS-000024' },
+        { description: 'Food', amountCents: 2000 },
+      ],
+    };
+    expect(buildWhatsAppClaimText(claim)).toBe(
+      [
+        '> *Supplier: YU WAI LOONG*',
+        'PR-JEP-202609-001-YU WAI LOONG-30.00',
+        'https://drive.google.com/file/d/ABC/view',
+        '',
+        '> Parkinh',
+        'ICS-000024 - RM 10.00',
+        '',
+        '> Food',
+        'PR-JEP-202609-001 - RM 20.00',
+        '',
+        'Total RM 30.00',
+        'Public Bank',
+        '6803149225',
+        'YU WAI LOONG',
+        '',
+        '*===============*',
+      ].join('\n'),
+    );
+  });
+});
+
 describe('buildWhatsAppBatchText', () => {
   it('returns byte-identical output to buildWhatsAppClaimText for a single claim', () => {
     expect(buildWhatsAppBatchText([baseClaim])).toBe(buildWhatsAppClaimText(baseClaim));

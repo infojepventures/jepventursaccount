@@ -3,7 +3,7 @@ import { runSubmitFlow } from './submitFlow';
 import type { AnyAttachment, LocalAttachment } from './types';
 
 const bank = { bankName: 'Maybank', accountHolder: 'Tan', accountNumber: '1234' };
-const draft = { ...emptyDraft(bank), items: [{ key: 'i', description: 'Parking', amount: '10.50' }] };
+const draft = { ...emptyDraft(bank), items: [{ key: 'i', description: 'Parking', amount: '10.50', reference: 'ICS-000024' }] };
 const local = (key: string, extra: Partial<LocalAttachment> = {}): LocalAttachment => ({
   key, kind: 'local', uri: `file:///${key}.jpg`, name: `${key}.jpg`, mimeType: 'image/jpeg', size: 100, ...extra,
 });
@@ -39,7 +39,7 @@ describe('runSubmitFlow', () => {
     expect(deps.api.uploadSession).toHaveBeenCalledWith({ claimId: 'C1', files: [{ name: 'a.jpg', mimeType: 'image/jpeg', size: 100 }] });
     expect(deps.api.submitClaim).toHaveBeenCalledWith({
       claimId: 'C1',
-      items: [{ description: 'Parking', amountCents: 1050 }],
+      items: [{ description: 'Parking', amountCents: 1050, reference: 'ICS-000024' }],
       payment: bank,
       attachmentIds: ['old1', 'id-a.jpg'],
       resubmit: true,
