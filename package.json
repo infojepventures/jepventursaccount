@@ -1,0 +1,22 @@
+{
+  "name": "jep-claims",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "netlify",
+    "mobile"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:int": "firebase emulators:exec --project demo-jep --only auth,firestore \"npm run test:int -w @jep/netlify\""
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.31.0",
+    "typescript": "~5.9.3"
+  },
+  "overrides": {
+    "jwks-rsa": "3.2.2"
+  }
+}

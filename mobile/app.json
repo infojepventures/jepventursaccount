@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "JEP Claims",
+    "slug": "jep-claims",
+    "scheme": "jepclaims",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.jepventures.account",
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#111111"
+      },
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.jepventures.account",
+      "supportsTablet": false
+    },
+    "plugins": [
+      "expo-router",
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow JEP Claims to take photos of your receipts."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#111111"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#111111"
+        }
+      ],
+      "expo-sharing"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "owner": "jepventures",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7ea4e473-4e02-4fbe-8b96-bb5359b0dba3"
+      }
+    }
+  }
+}

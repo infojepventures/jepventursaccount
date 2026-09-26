@@ -1,0 +1,26 @@
+[build]
+  command = "npm run build:functions -w @jep/netlify"
+  publish = "netlify/public"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # firebase-admin's jwks-rsa require()s ESM-only jose 6, which needs Node >= 22.12 at runtime.
+  AWS_LAMBDA_JS_RUNTIME = "nodejs22.x"
+  NPM_FLAGS = "--workspace=@jep/netlify --workspace=@jep/shared --include-workspace-root"
+
+[functions]
+  directory = "netlify/dist/functions"
+  node_bundler = "esbuild"
+  external_node_modules = ["subset-font", "harfbuzzjs", "firebase-admin"]
+
+# Only these two functions touch the PDF font/logo assets; shipping them with every
+# function bloats every other function's zip for nothing.
+[functions."generate-pdf-background"]
+  included_files = ["netlify/assets/**"]
+
+[functions.health]
+  included_files = ["netlify/assets/**"]
+
+# Daily: trash receipts uploaded for new claims that were never submitted (see lib/services/discardUploads.ts).
+[functions."cleanup-uploads"]
+  schedule = "@daily"
