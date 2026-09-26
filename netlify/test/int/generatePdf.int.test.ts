@@ -30,7 +30,10 @@ describe('generatePdf', () => {
     expect(file.name).toBe(c.pdf.fileName);
     expect(t.drive.folderPath(file.parents[0]!)).toBe('JEP Claims/2026');
     expect((await PDFDocument.load(file.data)).getPageCount()).toBe(4);
-    expect(String(t.sheets.rows.get(claimId)?.[16])).toContain(c.pdf.driveFileId!);
+    // The PDF link is shortened once, and the Sheet shows the short link.
+    expect(t.shortener.calls).toEqual([`https://drive.google.com/file/d/${c.pdf.driveFileId}/view`]);
+    expect(c.pdf.shortUrl).toBe('https://tinyurl.com/t1');
+    expect(t.sheets.rows.get(claimId)?.[16]).toBe('https://tinyurl.com/t1');
     expect(t.drive.files.get(c.attachmentsFolderId)!.name).toBe('PR-JEP-202609-draft-Tan Ah Kow-150.00');
   });
 
@@ -59,6 +62,22 @@ describe('generatePdf', () => {
     expect(await generatePdf(t.deps, claimId, t.triggered[0]!.requestId)).toBe('done');
     const c = (await getClaim(t.deps.db, claimId))!;
     expect(c.pdf.status).toBe('ready');
+  });
+
+  it('still marks the PDF ready, with the full Drive link, when shortening fails or is not configured', async () => {
+    const { t, alice } = await setup();
+    t.shortener.error = new Error('TinyURL down');
+    const { claimId } = await submitNewClaim(t, alice);
+    expect(await generatePdf(t.deps, claimId, t.triggered[0]!.requestId)).toBe('done');
+    const c = (await getClaim(t.deps.db, claimId))!;
+    expect(c.pdf.status).toBe('ready');
+    expect(c.pdf.shortUrl).toBeNull();
+    expect(t.sheets.rows.get(claimId)?.[16]).toBe(`https://drive.google.com/file/d/${c.pdf.driveFileId}/view`);
+
+    t.deps.shortener = null;
+    const { claimId: second } = await submitNewClaim(t, alice);
+    expect(await generatePdf(t.deps, second, t.triggered[1]!.requestId)).toBe('done');
+    expect((await getClaim(t.deps.db, second))!.pdf.shortUrl).toBeNull();
   });
 
   it('skips stale requests before doing any work', async () => {

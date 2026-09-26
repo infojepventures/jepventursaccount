@@ -1,11 +1,11 @@
-import { formatRM } from '@jep/shared';
+import { claimPdfLink, formatRM } from '@jep/shared';
 
 export interface WhatsAppClaimTextInput {
   refNo: string;
   totalCents: number;
   items: { description: string; amountCents: number; reference?: string }[];
   payment: { bankName: string; accountHolder: string; accountNumber: string };
-  pdf: { driveFileId: string | null; fileName: string | null };
+  pdf: { driveFileId: string | null; fileName: string | null; shortUrl?: string | null };
 }
 
 /** Collapses newlines/whitespace runs inside a value into single spaces, then trims. */
@@ -39,9 +39,8 @@ function buildGroupText(claims: WhatsAppClaimTextInput[]): string {
   claims.forEach((claim, ci) => {
     const refNo = clean(claim.refNo);
     if (claim.pdf.fileName) lines.push(clean(claim.pdf.fileName).replace(/\.pdf$/i, ''));
-    if (claim.pdf.driveFileId) {
-      lines.push(`https://drive.google.com/file/d/${claim.pdf.driveFileId}/view`);
-    }
+    const link = claimPdfLink(claim.pdf);
+    if (link) lines.push(link);
     lines.push('');
 
     claim.items.forEach((item, ii) => {

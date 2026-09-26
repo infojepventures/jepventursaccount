@@ -1,4 +1,4 @@
-import { formatCents, formatYmdHms, type ClaimDoc, type TimestampLike } from '@jep/shared';
+import { claimPdfLink, formatCents, formatYmdHms, type ClaimDoc, type TimestampLike } from '@jep/shared';
 import type { SheetRow } from './sheets';
 
 export const SHEET_HEADERS = [
@@ -45,7 +45,7 @@ export function toSheetRow(claimId: string, c: ClaimDoc): SheetRow {
     c.review?.reason ?? '',
     c.paidInfo?.paidDate ?? '',
     c.paidInfo?.reference ?? '',
-    c.pdf.status === 'ready' && c.pdf.driveFileId ? `https://drive.google.com/file/d/${c.pdf.driveFileId}/view` : '',
+    c.pdf.status === 'ready' ? (claimPdfLink(c.pdf) ?? '') : '',
     `https://drive.google.com/drive/folders/${c.attachmentsFolderId}`,
     ts(c.updatedAt),
   ];
