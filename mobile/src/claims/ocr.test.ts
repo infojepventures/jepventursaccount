@@ -1,5 +1,5 @@
 import TextRecognition from '@react-native-ml-kit/text-recognition';
-import { recognizeText } from './ocr';
+import { layoutText, recognizeText } from './ocr';
 
 jest.mock('@react-native-ml-kit/text-recognition', () => ({
   __esModule: true,
@@ -49,5 +49,31 @@ describe('recognizeText', () => {
     mockRecognize.mockResolvedValueOnce({ text: 'x'.repeat(25000), blocks: [] });
     const text = await recognizeText('file:///a.jpg');
     expect(text).toHaveLength(20000);
+  });
+});
+
+const line = (text: string, left: number, top: number, height = 20) => ({
+  text,
+  frame: { left, top, width: text.length * 8, height },
+  elements: [],
+  recognizedLanguages: [],
+});
+
+describe('layoutText', () => {
+  it('rebuilds visual rows from column-ordered blocks so labels sit next to their values', () => {
+    const result = {
+      text: 'unused',
+      blocks: [
+        { text: '', lines: [line('Sub Total', 470, 940), line('Grand Total', 470, 1010)], recognizedLanguages: [] },
+        { text: '', lines: [line('407.00', 820, 942), line('439.55', 820, 1008)], recognizedLanguages: [] },
+        { text: '', lines: [line('Natural Healing Spa', 36, 440)], recognizedLanguages: [] },
+      ],
+    };
+    expect(layoutText(result as never)).toBe('Natural Healing Spa\nSub Total 407.00\nGrand Total 439.55');
+  });
+
+  it('falls back to the plain text when lines have no frames', () => {
+    const result = { text: 'A\nB', blocks: [{ text: 'A', lines: [{ text: 'A', elements: [], recognizedLanguages: [] }], recognizedLanguages: [] }] };
+    expect(layoutText(result as never)).toBe('A\nB');
   });
 });
