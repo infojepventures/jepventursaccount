@@ -5,6 +5,7 @@ import { applySuggestion } from '../claims/applySuggestion';
 import { claimSummary } from '../claims/claimSummary';
 import { draftErrors, emptyItem, itemErrors, type ClaimDraft, type DraftItem } from '../claims/draft';
 import { orderByItem, receiptsForItem, unlinkedReceipts } from '../claims/itemReceipts';
+import { recordPayeeChange, removePayeeSources, type PayeeHistory } from '../claims/payeeHistory';
 import { recognizeText } from '../claims/ocr';
 import { pickFromCamera, pickFromLibrary, pickPdfs } from '../claims/pickers';
 import { putFile } from '../claims/putFile';
@@ -43,6 +44,8 @@ export function ClaimForm(p: {
   draftRef.current = draft;
   // Receipts removed from the form. An upload still in flight when removed is discarded once it lands.
   const removedKeys = useRef(new Set<string>());
+  // Receipts that overwrote Pay to, so removing one can put back the details from before it.
+  const payeeHistory = useRef<PayeeHistory>([]);
 
   const errors = draftErrors(draft, attachments.length);
   const remaining = MAX_ATTACHMENTS - attachments.length;
@@ -81,7 +84,9 @@ export function ClaimForm(p: {
       patchAttachment(key, { analyzeStage: 'reading' });
       const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId, ...(text ? { text } : {}) });
       if (removedKeys.current.has(key)) return; // removed while being read: don't fill the form from it
-      const result = applySuggestion(draftRef.current, itemKey, suggestion, { payeeEditedByUser: payeeEditedByUser.current });
+      const before = draftRef.current;
+      const result = applySuggestion(before, itemKey, suggestion, { payeeEditedByUser: payeeEditedByUser.current });
+      if (result.draft.bank !== before.bank) payeeHistory.current = recordPayeeChange(payeeHistory.current, key, before.bank);
       draftRef.current = result.draft;
       setDraft(result.draft);
       if (result.aiFields.size) setAiFields((prev) => new Set([...prev, ...result.aiFields]));
@@ -135,6 +140,17 @@ export function ClaimForm(p: {
     setAttachments((list) => list.filter((x) => x.key !== key));
     // Saved attachments of a claim being resubmitted stay until the resubmission replaces them.
     if (a?.kind === 'local' && a.uploadedId) discardFromDrive([a.uploadedId]);
+    restorePayee(key);
+  };
+
+  /** If the removed receipt's details are what Pay to shows, put back what was there before it. */
+  const restorePayee = (key: string) => {
+    const { history, restore } = removePayeeSources(payeeHistory.current, [key]);
+    payeeHistory.current = history;
+    if (!restore || payeeEditedByUser.current) return; // never undo the user's own typing
+    draftRef.current = { ...draftRef.current, bank: restore };
+    setDraft((d) => ({ ...d, bank: restore }));
+    if (history.length === 0) clearAiFields(['bank:bankName', 'bank:accountHolder', 'bank:accountNumber']);
   };
 
   const retryAttachment = (key: string, step: 'upload' | 'analyze') => {
