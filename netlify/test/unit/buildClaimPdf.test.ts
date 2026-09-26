@@ -11,7 +11,7 @@ const input: ClaimPdfInput = {
   applicant: { name: '陈大文 Tan Ah Kow', position: 'Operations Executive' },
   date: '2026-09-25',
   items: [
-    { description: '停车费 Parking at KLCC', amountCents: 1050 },
+    { description: '停车费 Parking at KLCC', amountCents: 1050, reference: 'ICS-000024' },
     { description: 'Lunch with client', amountCents: 13950 },
   ],
   totalCents: 15000,
@@ -46,6 +46,8 @@ describe('buildClaimPdf', () => {
     expect(text).toContain('DRAFT');
     expect(text).toContain('陈大文');
     expect(text).toContain('停车费');
+    expect(text).toContain('Doc No.');
+    expect(text).toContain('ICS-000024');
     expect(text).toContain('RM 150.00');
     expect(text).toContain('JEP VENTURES SDN BHD (1521088-K)');
   });

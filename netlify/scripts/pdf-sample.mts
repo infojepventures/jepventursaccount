@@ -9,7 +9,7 @@ const bytes = await buildClaimPdf(
     applicant: { name: '陈大文 Tan Ah Kow', position: 'Operations Executive' },
     date: '2026-09-25',
     items: [
-      { description: '停车费 Parking at KLCC', amountCents: 1050 },
+      { description: '停车费 Parking at KLCC', amountCents: 1050, reference: 'ICS-000024' },
       { description: 'Client lunch at Pavilion with a deliberately long description that wraps onto a second line', amountCents: 13950 },
     ],
     totalCents: 15000,
