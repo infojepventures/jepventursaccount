@@ -31,6 +31,7 @@ describe('generatePdf', () => {
     expect(t.drive.folderPath(file.parents[0]!)).toBe('JEP Claims/2026');
     expect((await PDFDocument.load(file.data)).getPageCount()).toBe(4);
     expect(String(t.sheets.rows.get(claimId)?.[16])).toContain(c.pdf.driveFileId!);
+    expect(t.drive.files.get(c.attachmentsFolderId)!.name).toBe('PR-JEP-202609-draft-Tan Ah Kow-150.00');
   });
 
   it('replaces the draft with the numbered final PDF after approval', async () => {
@@ -46,6 +47,18 @@ describe('generatePdf', () => {
     expect(c.pdf.fileName).toBe('PR-JEP-202609-001-Tan Ah Kow-150.00.pdf');
     expect(t.drive.files.get(draftId)!.trashed).toBe(true);
     expect(t.drive.livePdfs().map((f) => f.name)).toEqual(['PR-JEP-202609-001-Tan Ah Kow-150.00.pdf']);
+    expect(t.drive.files.get(c.attachmentsFolderId)!.name).toBe('PR-JEP-202609-001-Tan Ah Kow-150.00');
+  });
+
+  it('still returns done when the attachments folder rename fails', async () => {
+    const { t, alice } = await setup();
+    const { claimId } = await submitNewClaim(t, alice);
+    t.drive.rename = async () => {
+      throw new Error('rename unavailable');
+    };
+    expect(await generatePdf(t.deps, claimId, t.triggered[0]!.requestId)).toBe('done');
+    const c = (await getClaim(t.deps.db, claimId))!;
+    expect(c.pdf.status).toBe('ready');
   });
 
   it('skips stale requests before doing any work', async () => {

@@ -45,6 +45,9 @@ export async function generatePdf(
     if (outcome.oldId && outcome.oldId !== newId) {
       await deps.drive.trash(outcome.oldId).catch((e) => console.error('[generatePdf] trash old PDF failed', outcome.oldId, e));
     }
+    await deps.drive
+      .rename(claim.attachmentsFolderId, fileName.replace(/\.pdf$/, ''))
+      .catch((e) => console.error('[generatePdf] rename attachments folder failed', claim.attachmentsFolderId, e));
     await syncClaimToSheet(deps, claimId);
     return 'done';
   } catch (e) {

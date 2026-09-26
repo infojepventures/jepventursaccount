@@ -82,6 +82,12 @@ export class FakeDrive implements DriveApi {
     if (f) f.trashed = true;
   }
 
+  async rename(id: string, name: string) {
+    const f = this.files.get(id);
+    if (!f) throw new Error(`Drive rename failed: 404 ${id}`);
+    f.name = name;
+  }
+
   /** Test helper: "JEP Claims/2026/_attachments/<claimId>" style path of a folder. */
   folderPath(id: string): string {
     const names: string[] = [];
@@ -95,7 +101,7 @@ export class FakeDrive implements DriveApi {
 
   /** Test helper: live PDFs whose names start with PR-JEP. */
   livePdfs(): FakeFile[] {
-    return [...this.files.values()].filter((f) => !f.trashed && f.name.startsWith('PR-JEP'));
+    return [...this.files.values()].filter((f) => !f.trashed && f.mimeType === 'application/pdf' && f.name.startsWith('PR-JEP'));
   }
 }
 

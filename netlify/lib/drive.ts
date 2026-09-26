@@ -25,6 +25,7 @@ export interface DriveApi {
   downloadResponse(fileId: string): Promise<Response>;
   upload(p: { name: string; mimeType: string; parentId: string; data: Uint8Array }): Promise<{ id: string }>;
   trash(fileId: string): Promise<void>;
+  rename(fileId: string, name: string): Promise<void>;
 }
 
 const escapeQ = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -149,6 +150,14 @@ export class DriveClient implements DriveApi {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ trashed: true }),
+    });
+  }
+
+  async rename(fileId: string, name: string): Promise<void> {
+    await this.json(`${API}/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=id`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
     });
   }
 }

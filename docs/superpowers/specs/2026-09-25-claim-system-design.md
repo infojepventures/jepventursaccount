@@ -121,13 +121,13 @@ All money is stored as integer cents.
 ```
 JEP Claims/
   {yyyy}/
-    PR-JEP-...pdf                  merged PDFs (draft and final)
-    _attachments/{claimId}/...     original uploads
-  JEP Claims Register              Google Sheet
+    PR-JEP-...pdf                            merged PDFs (draft and final)
+    _attachments/{pdf file name w/o .pdf}/   original uploads
+  JEP Claims Register                        Google Sheet
 ```
 
 - The year folder comes from the yyyyMM in the ref. A final PDF approved in January goes to the new year's folder.
-- Attachments stay in the submission year's `_attachments/{claimId}/`.
+- Attachments stay in the submission year's `_attachments/` folder. The folder is created as `_attachments/{claimId}/` at upload-session time (before a PDF exists), then renamed to match the claim's PDF file name (without `.pdf`) each time a new PDF is generated — e.g. `_attachments/PR-JEP-202609-001-YU WAI LOONG-30.00/` after approval. All lookups use the folder's Drive ID, never its name, so the rename is purely cosmetic and best-effort (a failed rename never fails PDF generation).
 - On approval the final PDF is uploaded first, then the draft PDF is trashed (it can be recovered from the Shared Drive trash for 30 days).
 - On resubmit the new draft PDF is uploaded, then the old draft is trashed. Removed attachments are trashed.
 - Files are not shared publicly. Access is Shared Drive membership, or the app through `file-proxy`.

@@ -89,4 +89,13 @@ describe('DriveClient', () => {
     expect(f.calls[0]!.init.method).toBe('PATCH');
     expect(JSON.parse(String(f.calls[0]!.init.body))).toEqual({ trashed: true });
   });
+
+  it('renames files with a PATCH', async () => {
+    const f = fakeFetch([json({ id: 'A' })]);
+    await new DriveClient(token, f.impl).rename('A', 'New Name');
+    expect(f.calls[0]!.init.method).toBe('PATCH');
+    expect(JSON.parse(String(f.calls[0]!.init.body))).toEqual({ name: 'New Name' });
+    const url = new URL(f.calls[0]!.url);
+    expect(url.searchParams.get('supportsAllDrives')).toBe('true');
+  });
 });
