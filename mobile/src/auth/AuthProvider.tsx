@@ -8,7 +8,7 @@ import { isProfileComplete, type UserDoc } from '@jep/shared';
 import { ApiClientError, friendlyMessage } from '../lib/api';
 import { api } from '../lib/apiInstance';
 import { auth, db } from '../lib/firebase';
-import { lastRegisteredToken, registerForPush } from '../notifications/push';
+import { registerForPush, tokenForUnregister } from '../notifications/push';
 import type { AuthStatus } from './routeFor';
 
 export type AppUser = UserDoc & { uid: string };
@@ -55,14 +55,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     pushRegisteredUidRef.current = uid;
     pushUnsubRef.current?.();
     pushUnsubRef.current = undefined;
-    void registerForPush(api).then((unsub) => {
-      // If the user changed (or signed out) while registering, discard this subscription.
-      if (pushRegisteredUidRef.current === uid) {
-        pushUnsubRef.current = unsub;
-      } else {
-        unsub();
-      }
-    });
+    void registerForPush(api)
+      .then((unsub) => {
+        // If the user changed (or signed out) while registering, discard this subscription.
+        if (pushRegisteredUidRef.current === uid) {
+          pushUnsubRef.current = unsub;
+        } else {
+          unsub();
+        }
+      })
+      .catch((e) => console.error('[push]', e));
   }, []);
 
   // Shared by the auth-state listener and retrySession, so a retry invalidates any in-flight run.
@@ -153,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     stopPushRegistration();
-    const token = lastRegisteredToken();
+    const token = await tokenForUnregister();
     if (token) {
       await api.unregisterPushToken({ token }).catch(() => undefined);
     }
