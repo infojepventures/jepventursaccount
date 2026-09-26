@@ -1,6 +1,8 @@
 /**
- * Firestore `appConfig/android`, edited by an admin in the Firebase console when a new APK is needed
- * (native changes that an over-the-air update can't deliver):
+ * Over-the-air updates only reach builds with the same runtime version, which is the app `version` in
+ * app.json (runtimeVersion policy "appVersion"). A native change (new native module, permission, SDK upgrade)
+ * must bump that version and ship a new APK; then an admin updates Firestore `appConfig/android` so older
+ * builds are told to download it:
  *   { latestVersionCode: number, apkUrl: "https://…apk", message?: string }
  */
 export interface NativeUpdate {
