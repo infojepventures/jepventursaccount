@@ -259,3 +259,18 @@ Planning amendments (2026-09-26):
   - sets `counters/claimSeq.next = 1`
   - creates the first admins: wailoong8278.jcim@jcikl.cc and info.jepventures@gmail.com (as admin invites, so both can use Google Sign-In)
 - Service account: add it to the Shared Drive as Content Manager.
+
+## 14. Push Notifications (added 2026-09-26, approved)
+
+| Event | Recipients | Title / body |
+|---|---|---|
+| New claim submitted | All active admins except the applicant | `New claim` / `{applicant} submitted {RM total}` |
+| Rejected claim resubmitted | All active admins except the applicant | `Claim resubmitted` / `{applicant} resubmitted {RM total}` |
+| Approved | Applicant (skipped if the approver is the applicant) | `Claim approved` / `{refNo} ({RM total}) was approved` |
+| Rejected | Applicant (skipped if the reviewer is the applicant) | `Claim rejected` / `Reason: {reason}` |
+| Paid | Applicant (skipped if the payer is the applicant) | `Claim paid` / `{refNo} ({RM total}) has been paid` |
+
+- Transport: Firebase Cloud Messaging via `firebase-admin/messaging`, using the existing service account (the Firebase Cloud Messaging API must be enabled). Android channel id `claims`, high importance. Every message carries `data.claimId`; tapping it opens `/claim/{claimId}`.
+- Device tokens: `pushTokens/{token}` = `{ uid, platform, updatedAt }`, with no client access in the rules. The app registers the FCM device token after sign-in through `register-push-token`, and again on token refresh. Registering reassigns a token to the current user. The app calls `unregister-push-token` before sign-out.
+- Sending is best-effort. It runs after the claim write and the Sheet sync; failures are logged and never fail the API call. Tokens that FCM reports as unregistered or invalid are deleted.
+- Not notified in v1: cancellation and PDF ready.
