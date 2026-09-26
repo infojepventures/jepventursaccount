@@ -10,12 +10,14 @@ export interface LocalAttachment {
   uploadedId?: string;
   progress?: number;
   error?: string;
-  /** Set while the OCR request for this (already-uploaded) attachment is in flight. */
-  analyzing?: boolean;
+  /** While analysis runs: on-device OCR ('scanning', images only), then the server's field extraction ('reading'). */
+  analyzeStage?: 'scanning' | 'reading';
   /** Set once analysis has been attempted (success or failure), so it is not retried on rerender. */
   analyzed?: boolean;
   /** Set when the OCR request failed; cleared on a fresh attempt. */
   analyzeError?: string;
+  /** How many form fields the last successful analysis filled in. */
+  filledCount?: number;
 }
 
 export interface RemoteAttachment {

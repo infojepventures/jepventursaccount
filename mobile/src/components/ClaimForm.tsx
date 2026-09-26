@@ -63,18 +63,36 @@ export function ClaimForm(p: {
     setAttachments((list) => list.map((a) => (a.key === key && a.kind === 'local' ? { ...a, ...patch } : a)));
 
   const analyzeAttachment = async (key: string, fileId: string, mimeType: string, uri: string) => {
-    patchAttachment(key, { analyzing: true, analyzeError: undefined });
+    const isPdf = mimeType === 'application/pdf';
+    patchAttachment(key, { analyzeStage: isPdf ? 'reading' : 'scanning', analyzeError: undefined, filledCount: undefined });
     try {
       // PDFs are text-extracted server-side; images need on-device OCR text sent along.
-      const text = mimeType === 'application/pdf' ? undefined : (await recognizeText(uri)) ?? undefined;
+      const text = isPdf ? undefined : (await recognizeText(uri)) ?? undefined;
+      patchAttachment(key, { analyzeStage: 'reading' });
       const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId, ...(text ? { text } : {}) });
       const result = applySuggestion(draftRef.current, suggestion, { payeeEditedByUser: payeeEditedByUser.current });
       draftRef.current = result.draft;
       setDraft(result.draft);
       if (result.aiFields.size) setAiFields((prev) => new Set([...prev, ...result.aiFields]));
-      patchAttachment(key, { analyzing: false, analyzed: true });
+      patchAttachment(key, { analyzeStage: undefined, analyzed: true, filledCount: result.aiFields.size });
     } catch {
-      patchAttachment(key, { analyzing: false, analyzed: true, analyzeError: "Couldn't read this receipt" });
+      patchAttachment(key, { analyzeStage: undefined, analyzed: true, analyzeError: "Couldn't read" });
+    }
+  };
+
+  /** Uploads `files` straight away and analyses each one as soon as its upload finishes. */
+  const uploadAndAnalyze = async (files: LocalAttachment[]) => {
+    const byKey = new Map(files.map((f) => [f.key, f]));
+    const onAttachmentUpdate = (key: string, patch: Partial<LocalAttachment>) => {
+      patchAttachment(key, patch);
+      const file = patch.uploadedId ? byKey.get(key) : undefined;
+      if (file) void analyzeAttachment(key, patch.uploadedId!, file.mimeType, file.uri);
+    };
+    try {
+      await uploadPendingAttachments(api, putFile, p.claimId, files, onAttachmentUpdate);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Upload failed';
+      for (const file of files) patchAttachment(file.key, { error: message, progress: undefined });
     }
   };
 
@@ -83,20 +101,20 @@ export function ClaimForm(p: {
       const picked = await pick();
       if (picked.length === 0) return;
       setAttachments((a) => [...a, ...picked].slice(0, MAX_ATTACHMENTS));
-      const byKey = new Map(picked.map((f) => [f.key, f]));
-      const onAttachmentUpdate = (key: string, patch: Partial<LocalAttachment>) => {
-        patchAttachment(key, patch);
-        const file = patch.uploadedId ? byKey.get(key) : undefined;
-        if (file) void analyzeAttachment(key, patch.uploadedId!, file.mimeType, file.uri);
-      };
-      try {
-        await uploadPendingAttachments(api, putFile, p.claimId, picked, onAttachmentUpdate);
-      } catch (e) {
-        const message = e instanceof Error ? e.message : 'Upload failed';
-        for (const file of picked) patchAttachment(file.key, { error: message, progress: undefined });
-      }
+      await uploadAndAnalyze(picked);
     } catch (e) {
       Alert.alert('Could not add file', friendlyMessage(e));
+    }
+  };
+
+  const retryAttachment = (key: string, step: 'upload' | 'analyze') => {
+    const a = attachments.find((x): x is LocalAttachment => x.key === key && x.kind === 'local');
+    if (!a) return;
+    if (step === 'upload') {
+      patchAttachment(key, { error: undefined, progress: undefined });
+      void uploadAndAnalyze([{ ...a, error: undefined }]);
+    } else if (a.uploadedId) {
+      void analyzeAttachment(key, a.uploadedId, a.mimeType, a.uri);
     }
   };
 
@@ -167,6 +185,7 @@ export function ClaimForm(p: {
             claimId={p.claimId}
             items={attachments}
             onRemove={submitting ? undefined : (key) => setAttachments((a) => a.filter((x) => x.key !== key))}
+            onRetry={submitting ? undefined : retryAttachment}
           />
         ) : (
           <Text style={styles.hint}>Add at least one photo or PDF of your receipt.</Text>
