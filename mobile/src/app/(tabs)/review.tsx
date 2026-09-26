@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { formatRM, sumCents } from '@jep/shared';
 import { useAuth } from '../../auth/AuthProvider';
-import { BatchSelectToolbar, BatchShareBar, useBatchShareSelection } from '../../components/batchShare';
+import { BatchHint, BatchSelectToolbar, BatchShareBar, useBatchShareSelection } from '../../components/batchShare';
 import { ClaimCard } from '../../components/ClaimCard';
 import { FilterChips } from '../../components/FilterChips';
 import { useClaimsByStatus, type StatusFilter } from '../../data/useClaims';
@@ -49,11 +49,12 @@ export default function ReviewTab() {
         )}
         <BatchSelectToolbar
           selectMode={batch.selectMode}
-          onSelect={batch.toggleSelectMode}
+          count={batch.selectedClaims.length}
           onSelectAll={batch.selectAll}
           onCancel={batch.exit}
         />
       </View>
+      <BatchHint visible={!batch.selectMode && rows.length > 0} />
       {loading ? (
         <ActivityIndicator style={{ marginTop: space(10) }} color={colors.primary} />
       ) : (
@@ -68,6 +69,7 @@ export default function ReviewTab() {
               selected={batch.isSelected(item.id)}
               disabled={batch.selectMode && !batch.isShareable(item)}
               onToggle={() => batch.toggle(item.id)}
+              onLongPress={() => batch.selectViaLongPress(item)}
             />
           )}
           contentContainerStyle={[styles.list, batch.selectMode && styles.listWithBar]}

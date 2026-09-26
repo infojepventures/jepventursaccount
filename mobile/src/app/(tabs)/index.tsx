@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../../auth/AuthProvider';
-import { BatchSelectToolbar, BatchShareBar, useBatchShareSelection } from '../../components/batchShare';
+import { BatchHint, BatchSelectToolbar, BatchShareBar, useBatchShareSelection } from '../../components/batchShare';
 import { ClaimCard } from '../../components/ClaimCard';
 import { FilterChips } from '../../components/FilterChips';
 import { useMyClaims, type StatusFilter } from '../../data/useClaims';
@@ -30,14 +30,17 @@ export default function MyClaimsTab() {
       <View>
         <FilterChips options={FILTERS} value={filter} onChange={setFilter} />
       </View>
-      <View style={styles.toolbar}>
-        <BatchSelectToolbar
-          selectMode={batch.selectMode}
-          onSelect={batch.toggleSelectMode}
-          onSelectAll={batch.selectAll}
-          onCancel={batch.exit}
-        />
-      </View>
+      {batch.selectMode ? (
+        <View style={styles.toolbar}>
+          <BatchSelectToolbar
+            selectMode={batch.selectMode}
+            count={batch.selectedClaims.length}
+            onSelectAll={batch.selectAll}
+            onCancel={batch.exit}
+          />
+        </View>
+      ) : null}
+      <BatchHint visible={!batch.selectMode && data.length > 0} />
       {loading ? (
         <ActivityIndicator style={{ marginTop: space(10) }} color={colors.primary} />
       ) : (
@@ -51,6 +54,7 @@ export default function MyClaimsTab() {
               selected={batch.isSelected(item.id)}
               disabled={batch.selectMode && !batch.isShareable(item)}
               onToggle={() => batch.toggle(item.id)}
+              onLongPress={() => batch.selectViaLongPress(item)}
             />
           )}
           contentContainerStyle={[styles.list, batch.selectMode && styles.listWithBar]}

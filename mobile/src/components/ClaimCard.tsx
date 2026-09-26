@@ -13,6 +13,7 @@ export function ClaimCard({
   selected,
   disabled,
   onToggle,
+  onLongPress,
 }: {
   claim: ClaimRow;
   showApplicant?: boolean;
@@ -22,6 +23,8 @@ export function ClaimCard({
   /** When true (with `selectable`), the checkbox is greyed out and taps are ignored. */
   disabled?: boolean;
   onToggle?: () => void;
+  /** Long-pressing a card enters select mode and selects it, whether or not it's already selectable. */
+  onLongPress?: () => void;
 }) {
   const router = useRouter();
   const handlePress = () => {
@@ -35,6 +38,7 @@ export function ClaimCard({
     <Pressable
       style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }, disabled && styles.cardDisabled]}
       onPress={handlePress}
+      onLongPress={onLongPress}
     >
       <View style={styles.top}>
         <View style={styles.topLeft}>

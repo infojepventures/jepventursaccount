@@ -12,14 +12,18 @@ export { computeSelectedClaims, isShareable, MAX_SHARE_TEXT_LENGTH, pruneSelecte
 
 export interface BatchShareSelection {
   selectMode: boolean;
-  /** Enters select mode. */
-  toggleSelectMode: () => void;
   /** Exits select mode and clears the current selection. */
   exit: () => void;
   isSelected: (id: string) => boolean;
   toggle: (id: string) => void;
   /** Selects every currently-shareable row. */
   selectAll: () => void;
+  /**
+   * Long-press entry point: enters select mode and, if the given claim is currently shareable,
+   * selects it too. A long-press on a claim whose PDF isn't ready still enters select mode, but
+   * that claim itself stays unselected.
+   */
+  selectViaLongPress: (claim: ClaimRow) => void;
   selectedClaims: ClaimRow[];
   /** Builds the WhatsApp batch text for the current selection and shares it, then exits select mode. */
   share: () => void;
@@ -64,6 +68,16 @@ export function useBatchShareSelection(rows: ClaimRow[], resetKey: string): Batc
     setSelectedIds(new Set(rows.filter(isShareable).map((c) => c.id)));
   };
 
+  const selectViaLongPress = (claim: ClaimRow) => {
+    setSelectMode(true);
+    if (!isShareable(claim)) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.add(claim.id);
+      return next;
+    });
+  };
+
   const selectedClaims = computeSelectedClaims(rows, selectedIds);
 
   const share = () =>
@@ -80,11 +94,11 @@ export function useBatchShareSelection(rows: ClaimRow[], resetKey: string): Batc
 
   return {
     selectMode,
-    toggleSelectMode: () => setSelectMode(true),
     exit,
     isSelected: (id) => selectedIds.has(id),
     toggle,
     selectAll,
+    selectViaLongPress,
     selectedClaims,
     share,
     busy,
@@ -92,35 +106,43 @@ export function useBatchShareSelection(rows: ClaimRow[], resetKey: string): Batc
   };
 }
 
-/** "Select" toggle, or the "Select all" / "Cancel" row once select mode is active. */
+/**
+ * The "Select all" / "Cancel" row (with the current selected count) shown while select mode is
+ * active. Select mode itself is only entered via a long-press on a card, so this renders nothing
+ * otherwise.
+ */
 export function BatchSelectToolbar({
   selectMode,
-  onSelect,
+  count,
   onSelectAll,
   onCancel,
 }: {
   selectMode: boolean;
-  onSelect: () => void;
+  count: number;
   onSelectAll: () => void;
   onCancel: () => void;
 }) {
-  if (selectMode) {
-    return (
-      <View style={styles.selectRow}>
-        <Pressable onPress={onSelectAll} style={styles.selectAllBtn}>
-          <Text style={styles.selectAllText}>Select all</Text>
-        </Pressable>
-        <Pressable onPress={onCancel} style={styles.selectAllBtn}>
-          <Text style={styles.selectAllText}>Cancel</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  if (!selectMode) return null;
   return (
-    <Pressable onPress={onSelect} style={styles.selectToggle}>
-      <Text style={styles.selectToggleText}>Select</Text>
-    </Pressable>
+    <View style={styles.selectRow}>
+      <Text style={styles.selectCount}>{count} selected</Text>
+      <Pressable onPress={onSelectAll} style={styles.selectAllBtn}>
+        <Text style={styles.selectAllText}>Select all</Text>
+      </Pressable>
+      <Pressable onPress={onCancel} style={styles.selectAllBtn}>
+        <Text style={styles.selectAllText}>Cancel</Text>
+      </Pressable>
+    </View>
   );
+}
+
+/**
+ * Hint shown above the list, outside select mode, pointing people at the long-press gesture.
+ * `visible` should be false whenever the list is empty or select mode is active.
+ */
+export function BatchHint({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return <Text style={styles.hint}>Long-press a claim to select several and share to WhatsApp.</Text>;
 }
 
 /** Sticky bottom bar with "Cancel" and "WhatsApp (n)", shown while select mode is active. */
@@ -154,11 +176,11 @@ export function BatchShareBar({
 }
 
 const styles = StyleSheet.create({
-  selectToggle: { paddingVertical: space(2), paddingHorizontal: space(3) },
-  selectToggleText: { color: colors.primary, fontWeight: '600' },
   selectRow: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
+  selectCount: { flex: 1, color: colors.muted },
   selectAllBtn: { paddingVertical: space(2), paddingHorizontal: space(1) },
   selectAllText: { color: colors.primary, fontWeight: '600' },
+  hint: { color: colors.muted, fontSize: 12, paddingHorizontal: space(4), paddingBottom: space(2) },
   bottomBar: {
     position: 'absolute',
     left: 0,
