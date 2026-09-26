@@ -16,6 +16,7 @@ export const API = {
   registerPushToken: 'register-push-token',
   unregisterPushToken: 'unregister-push-token',
   analyzeAttachment: 'analyze-attachment',
+  discardUpload: 'discard-upload',
 } as const;
 
 export type ErrorCode =
@@ -145,4 +146,14 @@ export interface AttachmentSuggestion {
 
 export interface AnalyzeAttachmentResponse {
   suggestion: AttachmentSuggestion;
+}
+
+/** Trashes receipts uploaded for a claim that were then removed from the form before it was saved. */
+export interface DiscardUploadRequest {
+  claimId: string;
+  fileIds: string[];
+}
+
+export interface DiscardUploadResponse {
+  trashed: number;
 }

@@ -36,6 +36,8 @@ export function ClaimForm(p: {
   // AI-filled field keys are available synchronously (React may defer updaters).
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  // Receipts removed from the form. An upload still in flight when removed is discarded once it lands.
+  const removedKeys = useRef(new Set<string>());
 
   const errors = draftErrors(draft, attachments.length);
   const remaining = MAX_ATTACHMENTS - attachments.length;
@@ -70,6 +72,7 @@ export function ClaimForm(p: {
       const text = isPdf ? undefined : (await recognizeText(uri)) ?? undefined;
       patchAttachment(key, { analyzeStage: 'reading' });
       const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId, ...(text ? { text } : {}) });
+      if (removedKeys.current.has(key)) return; // removed while being read: don't fill the form from it
       const result = applySuggestion(draftRef.current, suggestion, { payeeEditedByUser: payeeEditedByUser.current });
       draftRef.current = result.draft;
       setDraft(result.draft);
@@ -84,6 +87,10 @@ export function ClaimForm(p: {
   const uploadAndAnalyze = async (files: LocalAttachment[]) => {
     const byKey = new Map(files.map((f) => [f.key, f]));
     const onAttachmentUpdate = (key: string, patch: Partial<LocalAttachment>) => {
+      if (removedKeys.current.has(key)) {
+        if (patch.uploadedId) discardFromDrive([patch.uploadedId]);
+        return;
+      }
       patchAttachment(key, patch);
       const file = patch.uploadedId ? byKey.get(key) : undefined;
       if (file) void analyzeAttachment(key, patch.uploadedId!, file.mimeType, file.uri);
@@ -105,6 +112,19 @@ export function ClaimForm(p: {
     } catch (e) {
       Alert.alert('Could not add file', friendlyMessage(e));
     }
+  };
+
+  /** Best effort: anything missed here is trashed by the server's daily cleanup of unsubmitted uploads. */
+  const discardFromDrive = (fileIds: string[]) => {
+    api.discardUpload({ claimId: p.claimId, fileIds }).catch(() => {});
+  };
+
+  const removeAttachment = (key: string) => {
+    const a = attachments.find((x) => x.key === key);
+    removedKeys.current.add(key);
+    setAttachments((list) => list.filter((x) => x.key !== key));
+    // Saved attachments of a claim being resubmitted stay until the resubmission replaces them.
+    if (a?.kind === 'local' && a.uploadedId) discardFromDrive([a.uploadedId]);
   };
 
   const retryAttachment = (key: string, step: 'upload' | 'analyze') => {
@@ -184,7 +204,7 @@ export function ClaimForm(p: {
           <AttachmentList
             claimId={p.claimId}
             items={attachments}
-            onRemove={submitting ? undefined : (key) => setAttachments((a) => a.filter((x) => x.key !== key))}
+            onRemove={submitting ? undefined : removeAttachment}
             onRetry={submitting ? undefined : retryAttachment}
           />
         ) : (

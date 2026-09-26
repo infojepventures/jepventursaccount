@@ -20,3 +20,7 @@
 
 [functions.health]
   included_files = ["netlify/assets/**"]
+
+# Daily: trash receipts uploaded for new claims that were never submitted (see lib/services/discardUploads.ts).
+[functions."cleanup-uploads"]
+  schedule = "@daily"
