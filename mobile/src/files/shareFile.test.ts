@@ -1,4 +1,18 @@
-jest.mock('react-native', () => ({ Platform: { OS: 'android' } }));
+let mockPlatformOS: 'android' | 'ios' = 'android';
+const mockShareShare = jest.fn(async (_content: { message: string }) => ({ action: 'sharedAction' }));
+let mockCanOpenURL = jest.fn(async (_url: string) => true);
+const mockOpenURL = jest.fn(async (_url: string) => undefined);
+
+jest.mock('react-native', () => ({
+  get Platform() {
+    return { OS: mockPlatformOS };
+  },
+  Share: { share: (content: { message: string }) => mockShareShare(content) },
+  Linking: {
+    canOpenURL: (url: string) => mockCanOpenURL(url),
+    openURL: (url: string) => mockOpenURL(url),
+  },
+}));
 
 let mockDownloadResult: { status: number; uri: string };
 let mockDownloadError: Error | null = null;
@@ -44,7 +58,7 @@ jest.mock('../lib/apiInstance', () => ({
   },
 }));
 
-import { sanitizeFileName, shareClaimFile, ShareFileError, shouldAttemptWhatsappIntent } from './shareFile';
+import { sanitizeFileName, shareClaimFile, shareTextToWhatsApp, ShareFileError, shouldAttemptWhatsappIntent } from './shareFile';
 
 describe('sanitizeFileName', () => {
   it('replaces filesystem-illegal characters', () => {
@@ -140,5 +154,56 @@ describe('shareClaimFile', () => {
     mockDownloadError = new Error('network down');
     await expect(call('any')).rejects.toThrow(ShareFileError);
     await expect(call('any')).rejects.toThrow(/check your connection/);
+  });
+});
+
+describe('shareTextToWhatsApp', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPlatformOS = 'android';
+    mockIntentError = null;
+    mockCanOpenURL = jest.fn(async (_url: string) => true);
+  });
+
+  it('sends the text via the WhatsApp intent on android when it succeeds', async () => {
+    await shareTextToWhatsApp('hello there');
+    expect(mockStartActivityAsync).toHaveBeenCalledWith('android.intent.action.SEND', {
+      type: 'text/plain',
+      extra: { 'android.intent.extra.TEXT': 'hello there' },
+      packageName: 'com.whatsapp',
+    });
+    expect(mockShareShare).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Share.share on android when the WhatsApp intent throws', async () => {
+    mockIntentError = new Error('ActivityNotFoundException');
+    await shareTextToWhatsApp('hello there');
+    expect(mockStartActivityAsync).toHaveBeenCalled();
+    expect(mockShareShare).toHaveBeenCalledWith({ message: 'hello there' });
+  });
+
+  it('opens the whatsapp:// URL on iOS when it can be opened', async () => {
+    mockPlatformOS = 'ios';
+    await shareTextToWhatsApp('hello there');
+    expect(mockCanOpenURL).toHaveBeenCalledWith('whatsapp://send?text=hello%20there');
+    expect(mockOpenURL).toHaveBeenCalledWith('whatsapp://send?text=hello%20there');
+    expect(mockShareShare).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Share.share on iOS when the whatsapp:// URL cannot be opened', async () => {
+    mockPlatformOS = 'ios';
+    mockCanOpenURL = jest.fn(async (_url: string) => false);
+    await shareTextToWhatsApp('hello there');
+    expect(mockOpenURL).not.toHaveBeenCalled();
+    expect(mockShareShare).toHaveBeenCalledWith({ message: 'hello there' });
+  });
+
+  it('falls back to Share.share on iOS when canOpenURL itself throws', async () => {
+    mockPlatformOS = 'ios';
+    mockCanOpenURL = jest.fn(async (_url: string) => {
+      throw new Error('boom');
+    });
+    await shareTextToWhatsApp('hello there');
+    expect(mockShareShare).toHaveBeenCalledWith({ message: 'hello there' });
   });
 });

@@ -6,7 +6,8 @@ import { useAuth } from '../../../auth/AuthProvider';
 import { remoteAttachments } from '../../../claims/draft';
 import { AttachmentList } from '../../../components/AttachmentList';
 import { useClaim } from '../../../data/useClaims';
-import { shareClaimFile } from '../../../files/shareFile';
+import { buildWhatsAppClaimText } from '../../../files/claimShareText';
+import { shareTextToWhatsApp } from '../../../files/shareFile';
 import { api } from '../../../lib/apiInstance';
 import { Button } from '../../../ui/Button';
 import { PromptModal } from '../../../ui/PromptModal';
@@ -107,13 +108,7 @@ export default function ClaimDetailScreen() {
                 loading={busy}
                 onPress={() =>
                   run(async () => {
-                    await shareClaimFile({
-                      claimId: claim.id,
-                      fileId: claim.pdf.driveFileId!,
-                      name: claim.pdf.fileName ?? 'claim.pdf',
-                      mimeType: 'application/pdf',
-                      target: 'whatsapp',
-                    });
+                    await shareTextToWhatsApp(buildWhatsAppClaimText(claim));
                   })
                 }
               />

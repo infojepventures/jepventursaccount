@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as Sharing from 'expo-sharing';
-import { Platform } from 'react-native';
+import { Linking, Platform, Share } from 'react-native';
 import { api } from '../lib/apiInstance';
 
 export type ShareTarget = 'whatsapp' | 'any';
@@ -107,4 +107,38 @@ export async function shareClaimFile(opts: {
   }
 
   await shareViaSheet(fileUri, mimeType);
+}
+
+/**
+ * Sends a plain-text message straight to WhatsApp: on Android via the WhatsApp-specific intent,
+ * on iOS via the `whatsapp://send` URL scheme. Falls back to the system share sheet
+ * (`Share.share`) whenever WhatsApp isn't installed or the WhatsApp-specific path fails.
+ */
+export async function shareTextToWhatsApp(text: string): Promise<void> {
+  if (Platform.OS === 'android') {
+    try {
+      await IntentLauncher.startActivityAsync(ANDROID_ACTION_SEND, {
+        type: 'text/plain',
+        extra: { 'android.intent.extra.TEXT': text },
+        packageName: WHATSAPP_PACKAGE,
+      });
+      return;
+    } catch {
+      // WhatsApp isn't installed, or the intent otherwise failed; fall back below.
+    }
+    await Share.share({ message: text });
+    return;
+  }
+
+  const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
+  try {
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      await Linking.openURL(url);
+      return;
+    }
+  } catch {
+    // Fall through to the share sheet below.
+  }
+  await Share.share({ message: text });
 }
