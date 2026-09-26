@@ -190,6 +190,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space(3),
     padding: space(4),
+    // Clear the raised centre New Claim button, which overlaps the top of the tab bar by ~28px.
+    paddingBottom: space(4) + 28,
     backgroundColor: colors.card,
     borderTopWidth: 1,
     borderTopColor: colors.border,

@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingHorizontal: space(4) },
   list: { padding: space(4), paddingTop: 0, gap: space(3) },
-  listWithBar: { paddingBottom: space(20) },
+  listWithBar: { paddingBottom: space(28) },
   empty: { alignItems: 'center', gap: space(4), marginTop: space(16) },
   emptyText: { color: colors.muted },
 });

@@ -92,6 +92,6 @@ const styles = StyleSheet.create({
   search: { flex: 1, paddingBottom: space(3) },
   summary: { flex: 1, paddingBottom: space(2), color: colors.muted },
   list: { padding: space(4), paddingTop: 0, gap: space(3) },
-  listWithBar: { paddingBottom: space(20) },
+  listWithBar: { paddingBottom: space(28) },
   empty: { textAlign: 'center', color: colors.muted, marginTop: space(16) },
 });
