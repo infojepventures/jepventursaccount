@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ClaimRow } from '../data/useClaims';
 import { buildWhatsAppBatchText } from '../files/claimShareText';
@@ -49,6 +50,17 @@ export function useBatchShareSelection(rows: ClaimRow[], resetKey: string): Batc
   useEffect(() => {
     setSelectedIds((prev) => pruneSelectedIds(prev, rows));
   }, [rows]);
+
+  // Tab screens stay mounted, so leaving the tab (e.g. My Claims ⇄ Review) must reset the selection explicitly.
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        setSelectMode(false);
+        setSelectedIds(new Set());
+      },
+      [],
+    ),
+  );
 
   const exit = () => {
     setSelectMode(false);
