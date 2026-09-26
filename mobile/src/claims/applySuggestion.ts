@@ -1,8 +1,5 @@
 import { formatCents, type AttachmentSuggestion } from '@jep/shared';
-import { newKey } from './types';
 import type { ClaimDraft, DraftItem } from './draft';
-
-const isItemEmpty = (i: DraftItem) => !i.reference.trim() && !i.description.trim() && !i.amount.trim();
 
 export interface ApplySuggestionOpts {
   /** True once the user has typed into any "Pay to" field in this form session. */
@@ -16,26 +13,26 @@ export interface ApplySuggestionResult {
 }
 
 /**
- * Applies one attachment's OCR suggestion to a claim draft. Pure: takes the current draft and
- * returns a new one, plus the set of field keys that were AI-filled (for an "AI" badge in the UI).
+ * Applies one receipt's OCR suggestion to the claim draft. The receipt belongs to one item (its tab), whose
+ * fields are overwritten with whatever the suggestion read. Pure: returns a new draft plus the field keys
+ * that were AI-filled (for an "AI" badge in the UI).
  */
-export function applySuggestion(draft: ClaimDraft, suggestion: AttachmentSuggestion, opts: ApplySuggestionOpts): ApplySuggestionResult {
+export function applySuggestion(
+  draft: ClaimDraft,
+  itemKey: string,
+  suggestion: AttachmentSuggestion,
+  opts: ApplySuggestionOpts,
+): ApplySuggestionResult {
   const aiFields = new Set<string>();
   let items = draft.items;
 
-  const hasItemData = suggestion.reference !== undefined || suggestion.description !== undefined || suggestion.amountCents !== undefined;
-  if (hasItemData) {
-    const newItem: DraftItem = {
-      key: newKey(),
-      reference: suggestion.reference ?? '',
-      description: suggestion.description ?? '',
-      amount: suggestion.amountCents !== undefined ? formatCents(suggestion.amountCents) : '',
-    };
-    const replaceOnlyEmpty = draft.items.length === 1 && isItemEmpty(draft.items[0]!);
-    items = replaceOnlyEmpty ? [newItem] : [...draft.items, newItem];
-    if (suggestion.reference !== undefined) aiFields.add(`item:${newItem.key}:reference`);
-    if (suggestion.description !== undefined) aiFields.add(`item:${newItem.key}:description`);
-    if (suggestion.amountCents !== undefined) aiFields.add(`item:${newItem.key}:amount`);
+  const patch: Partial<DraftItem> = {};
+  if (suggestion.reference !== undefined) patch.reference = suggestion.reference;
+  if (suggestion.description !== undefined) patch.description = suggestion.description;
+  if (suggestion.amountCents !== undefined) patch.amount = formatCents(suggestion.amountCents);
+  if (Object.keys(patch).length && draft.items.some((i) => i.key === itemKey)) {
+    items = draft.items.map((i) => (i.key === itemKey ? { ...i, ...patch } : i));
+    for (const field of Object.keys(patch)) aiFields.add(`item:${itemKey}:${field}`);
   }
 
   let bank = draft.bank;
@@ -56,5 +53,6 @@ export function applySuggestion(draft: ClaimDraft, suggestion: AttachmentSuggest
     }
   }
 
+  if (items === draft.items && bank === draft.bank) return { draft, aiFields };
   return { draft: { ...draft, items, bank }, aiFields };
 }

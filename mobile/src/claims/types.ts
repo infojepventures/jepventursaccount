@@ -18,6 +18,8 @@ export interface LocalAttachment {
   analyzeError?: string;
   /** How many form fields the last successful analysis filled in. */
   filledCount?: number;
+  /** The item (tab) this receipt was added under. Form-only; never sent to the server. */
+  itemKey?: string;
 }
 
 export interface RemoteAttachment {
@@ -27,6 +29,8 @@ export interface RemoteAttachment {
   name: string;
   mimeType: AttachmentMime;
   size: number;
+  /** Present for type symmetry with LocalAttachment; a resubmitted claim's saved files have none (the link isn't stored). */
+  itemKey?: string;
 }
 
 export type AnyAttachment = LocalAttachment | RemoteAttachment;

@@ -47,13 +47,20 @@ export function draftTotalCents(d: ClaimDraft): number {
   return d.items.reduce((sum, i) => sum + (parseAmountToCents(i.amount) ?? 0), 0);
 }
 
+/** Field errors for one item (shown on its tab). */
+export function itemErrors(item: DraftItem): string[] {
+  const errors: string[] = [];
+  if (!item.description.trim()) errors.push('description is required');
+  const cents = parseAmountToCents(item.amount);
+  if (cents === null) errors.push('enter an amount like 12.50');
+  else if (cents <= 0) errors.push('amount must be greater than 0');
+  return errors;
+}
+
 export function draftErrors(d: ClaimDraft, attachmentCount: number): string[] {
   const errors: string[] = [];
   d.items.forEach((item, i) => {
-    if (!item.description.trim()) errors.push(`Item ${i + 1}: description is required`);
-    const cents = parseAmountToCents(item.amount);
-    if (cents === null) errors.push(`Item ${i + 1}: enter an amount like 12.50`);
-    else if (cents <= 0) errors.push(`Item ${i + 1}: amount must be greater than 0`);
+    for (const e of itemErrors(item)) errors.push(`Item ${i + 1}: ${e}`);
   });
   if (d.items.length === 0) errors.push('Add at least one item');
   if (errors.length === 0) errors.push(...validateItems(draftToItems(d)));

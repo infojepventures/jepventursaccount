@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import { formatRM, MAX_ATTACHMENTS } from '@jep/shared';
+import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
+import { formatRM, MAX_ATTACHMENTS, parseAmountToCents } from '@jep/shared';
 import { applySuggestion } from '../claims/applySuggestion';
-import { draftErrors, draftTotalCents, emptyItem, type ClaimDraft, type DraftItem } from '../claims/draft';
+import { draftErrors, draftTotalCents, emptyItem, itemErrors, type ClaimDraft, type DraftItem } from '../claims/draft';
+import { orderByItem, receiptsForItem, unlinkedReceipts } from '../claims/itemReceipts';
 import { recognizeText } from '../claims/ocr';
 import { pickFromCamera, pickFromLibrary, pickPdfs } from '../claims/pickers';
 import { putFile } from '../claims/putFile';
@@ -16,6 +17,7 @@ import { Section } from '../ui/Section';
 import { TextField } from '../ui/TextField';
 import { colors, space } from '../ui/theme';
 import { AttachmentList } from './AttachmentList';
+import { ItemTabs, type ItemTab } from './ItemTabs';
 
 export function ClaimForm(p: {
   claimId: string;
@@ -31,6 +33,7 @@ export function ClaimForm(p: {
   const [submitting, setSubmitting] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [aiFields, setAiFields] = useState<Set<string>>(new Set());
+  const [activeKey, setActiveKey] = useState(p.initialDraft.items[0]?.key ?? '');
   const payeeEditedByUser = useRef(false);
   // Latest draft for async OCR callbacks: applySuggestion must run outside a setState updater so its
   // AI-filled field keys are available synchronously (React may defer updaters).
@@ -41,6 +44,8 @@ export function ClaimForm(p: {
 
   const errors = draftErrors(draft, attachments.length);
   const remaining = MAX_ATTACHMENTS - attachments.length;
+  const activeIndex = Math.max(0, draft.items.findIndex((i) => i.key === activeKey));
+  const active = draft.items[activeIndex]!;
 
   const clearAiFields = (keys: string[]) =>
     setAiFields((prev) => {
@@ -64,7 +69,8 @@ export function ClaimForm(p: {
   const patchAttachment = (key: string, patch: Partial<LocalAttachment>) =>
     setAttachments((list) => list.map((a) => (a.key === key && a.kind === 'local' ? { ...a, ...patch } : a)));
 
-  const analyzeAttachment = async (key: string, fileId: string, mimeType: string, uri: string) => {
+  /** Reads a receipt and overwrites its own item's fields (and the payee) with what it found. */
+  const analyzeAttachment = async (key: string, fileId: string, mimeType: string, uri: string, itemKey: string) => {
     const isPdf = mimeType === 'application/pdf';
     patchAttachment(key, { analyzeStage: isPdf ? 'reading' : 'scanning', analyzeError: undefined, filledCount: undefined });
     try {
@@ -73,7 +79,7 @@ export function ClaimForm(p: {
       patchAttachment(key, { analyzeStage: 'reading' });
       const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId, ...(text ? { text } : {}) });
       if (removedKeys.current.has(key)) return; // removed while being read: don't fill the form from it
-      const result = applySuggestion(draftRef.current, suggestion, { payeeEditedByUser: payeeEditedByUser.current });
+      const result = applySuggestion(draftRef.current, itemKey, suggestion, { payeeEditedByUser: payeeEditedByUser.current });
       draftRef.current = result.draft;
       setDraft(result.draft);
       if (result.aiFields.size) setAiFields((prev) => new Set([...prev, ...result.aiFields]));
@@ -93,7 +99,7 @@ export function ClaimForm(p: {
       }
       patchAttachment(key, patch);
       const file = patch.uploadedId ? byKey.get(key) : undefined;
-      if (file) void analyzeAttachment(key, patch.uploadedId!, file.mimeType, file.uri);
+      if (file) void analyzeAttachment(key, patch.uploadedId!, file.mimeType, file.uri, file.itemKey ?? '');
     };
     try {
       await uploadPendingAttachments(api, putFile, p.claimId, files, onAttachmentUpdate);
@@ -103,9 +109,11 @@ export function ClaimForm(p: {
     }
   };
 
+  /** Adds receipts under the item whose tab was open when the picker was launched. */
   const addFiles = async (pick: () => Promise<LocalAttachment[]>) => {
+    const itemKey = active.key;
     try {
-      const picked = await pick();
+      const picked = (await pick()).map((f) => ({ ...f, itemKey }));
       if (picked.length === 0) return;
       setAttachments((a) => [...a, ...picked].slice(0, MAX_ATTACHMENTS));
       await uploadAndAnalyze(picked);
@@ -134,19 +142,48 @@ export function ClaimForm(p: {
       patchAttachment(key, { error: undefined, progress: undefined });
       void uploadAndAnalyze([{ ...a, error: undefined }]);
     } else if (a.uploadedId) {
-      void analyzeAttachment(key, a.uploadedId, a.mimeType, a.uri);
+      void analyzeAttachment(key, a.uploadedId, a.mimeType, a.uri, a.itemKey ?? '');
     }
+  };
+
+  const addItem = () => {
+    const item = emptyItem();
+    setDraft((d) => ({ ...d, items: [...d.items, item] }));
+    setActiveKey(item.key);
+  };
+
+  const removeItem = (key: string) => {
+    const index = draft.items.findIndex((i) => i.key === key);
+    const receipts = receiptsForItem(attachments, key);
+    const doRemove = () => {
+      for (const r of receipts) removeAttachment(r.key);
+      setDraft((d) => ({ ...d, items: d.items.filter((i) => i.key !== key) }));
+      const next = draft.items[index + 1] ?? draft.items[index - 1];
+      if (next) setActiveKey(next.key);
+    };
+    Alert.alert(
+      `Remove item ${index + 1}?`,
+      receipts.length ? `Its ${receipts.length} receipt${receipts.length === 1 ? '' : 's'} will be removed too.` : undefined,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: doRemove },
+      ],
+    );
   };
 
   const submit = async () => {
     setShowErrors(true);
     if (errors.length) {
+      const firstBad = draft.items.find((i) => itemErrors(i).length);
+      if (firstBad) setActiveKey(firstBad.key);
       Alert.alert('Please fix these first', errors.join('\n'));
       return;
     }
     setSubmitting(true);
     try {
-      await runSubmitFlow({ api, putFile }, { claimId: p.claimId, draft, attachments, resubmit: p.resubmit }, patchAttachment);
+      // Item by item, so the merged PDF's receipts follow the items.
+      const ordered = orderByItem(attachments, draft.items);
+      await runSubmitFlow({ api, putFile }, { claimId: p.claimId, draft, attachments: ordered, resubmit: p.resubmit }, patchAttachment);
       p.onSubmitted(p.claimId);
     } catch (e) {
       Alert.alert('Not submitted', friendlyMessage(e));
@@ -155,67 +192,94 @@ export function ClaimForm(p: {
     }
   };
 
+  const tabs: ItemTab[] = draft.items.map((item) => {
+    const receipts = receiptsForItem(attachments, item.key);
+    const cents = parseAmountToCents(item.amount);
+    return {
+      key: item.key,
+      amountLabel: cents !== null && cents > 0 ? formatRM(cents) : '—',
+      receiptCount: receipts.length,
+      busy: receipts.some((r) => r.kind === 'local' && !r.error && (!r.uploadedId || r.analyzeStage !== undefined)),
+      hasError: showErrors && itemErrors(item).length > 0,
+    };
+  });
+  const activeReceipts = receiptsForItem(attachments, active.key);
+  const otherReceipts = unlinkedReceipts(attachments, draft.items);
+  const activeErrors = showErrors ? itemErrors(active) : [];
+
   return (
     <Screen>
       <Section
-        title="Items"
+        title={`Items (${draft.items.length})`}
         right={<Text style={styles.total}>{formatRM(draftTotalCents(draft))}</Text>}
       >
-        {draft.items.map((item, i) => (
-          <View key={item.key} style={styles.item}>
-            <View style={styles.itemHead}>
-              <Text style={styles.itemNo}>Item {i + 1}</Text>
-              {draft.items.length > 1 ? (
-                <Pressable onPress={() => setDraft((d) => ({ ...d, items: d.items.filter((x) => x.key !== item.key) }))}>
-                  <Text style={styles.remove}>Remove</Text>
-                </Pressable>
-              ) : null}
-            </View>
-            <TextField
-              label="Doc No. (optional)"
-              value={item.reference}
-              onChangeText={(t) => setItem(item.key, { reference: t })}
-              autoCapitalize="characters"
-              placeholder="e.g. ICS-000024"
-              badge={aiFields.has(`item:${item.key}:reference`) ? 'AI' : undefined}
-            />
-            <TextField
-              label="Description / purpose"
-              value={item.description}
-              onChangeText={(t) => setItem(item.key, { description: t })}
-              placeholder="e.g. Parking at client office"
-              badge={aiFields.has(`item:${item.key}:description`) ? 'AI' : undefined}
-            />
-            <TextField
-              label="Amount (RM)"
-              value={item.amount}
-              onChangeText={(t) => setItem(item.key, { amount: t })}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              badge={aiFields.has(`item:${item.key}:amount`) ? 'AI' : undefined}
-            />
+        <ItemTabs tabs={tabs} activeKey={active.key} onSelect={setActiveKey} onAdd={submitting ? undefined : addItem} />
+
+        <View style={styles.item}>
+          <TextField
+            label="Doc No. (optional)"
+            value={active.reference}
+            onChangeText={(t) => setItem(active.key, { reference: t })}
+            autoCapitalize="characters"
+            placeholder="e.g. ICS-000024"
+            badge={aiFields.has(`item:${active.key}:reference`) ? 'AI' : undefined}
+          />
+          <TextField
+            label="Description / purpose"
+            value={active.description}
+            onChangeText={(t) => setItem(active.key, { description: t })}
+            placeholder="e.g. Parking at client office"
+            badge={aiFields.has(`item:${active.key}:description`) ? 'AI' : undefined}
+          />
+          <TextField
+            label="Amount (RM)"
+            value={active.amount}
+            onChangeText={(t) => setItem(active.key, { amount: t })}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            badge={aiFields.has(`item:${active.key}:amount`) ? 'AI' : undefined}
+          />
+          {activeErrors.length ? <Text style={styles.errors}>{activeErrors.join('\n')}</Text> : null}
+        </View>
+
+        <View style={styles.receipts}>
+          <View style={styles.receiptsHead}>
+            <Text style={styles.subTitle}>Receipts for item {activeIndex + 1}</Text>
+            <Text style={styles.count}>{attachments.length}/{MAX_ATTACHMENTS} in claim</Text>
           </View>
-        ))}
-        <Button title="Add item" variant="secondary" icon="add" onPress={() => setDraft((d) => ({ ...d, items: [...d.items, emptyItem()] }))} />
+          {activeReceipts.length ? (
+            <AttachmentList
+              claimId={p.claimId}
+              items={activeReceipts}
+              onRemove={submitting ? undefined : removeAttachment}
+              onRetry={submitting ? undefined : retryAttachment}
+            />
+          ) : (
+            <Text style={styles.hint}>Add this item's receipt. Its details fill in automatically.</Text>
+          )}
+          <View style={styles.row}>
+            <View style={styles.flex}><Button title="Camera" icon="camera-outline" variant="secondary" disabled={remaining <= 0 || submitting} onPress={() => addFiles(pickFromCamera)} /></View>
+            <View style={styles.flex}><Button title="Photos" icon="images-outline" variant="secondary" disabled={remaining <= 0 || submitting} onPress={() => addFiles(() => pickFromLibrary(remaining))} /></View>
+            <View style={styles.flex}><Button title="PDF" icon="document-outline" variant="secondary" disabled={remaining <= 0 || submitting} onPress={() => addFiles(() => pickPdfs(remaining))} /></View>
+          </View>
+        </View>
+
+        {draft.items.length > 1 ? (
+          <Button title={`Remove item ${activeIndex + 1}`} icon="trash-outline" variant="danger" disabled={submitting} onPress={() => removeItem(active.key)} />
+        ) : null}
       </Section>
 
-      <Section title={`Receipts (${attachments.length}/${MAX_ATTACHMENTS})`}>
-        {attachments.length ? (
+      {otherReceipts.length ? (
+        <Section title={`Other receipts (${otherReceipts.length})`}>
+          <Text style={styles.hint}>Receipts already on this claim. Remove any you are replacing.</Text>
           <AttachmentList
             claimId={p.claimId}
-            items={attachments}
+            items={otherReceipts}
             onRemove={submitting ? undefined : removeAttachment}
             onRetry={submitting ? undefined : retryAttachment}
           />
-        ) : (
-          <Text style={styles.hint}>Add at least one photo or PDF of your receipt.</Text>
-        )}
-        <View style={styles.row}>
-          <View style={styles.flex}><Button title="Camera" icon="camera-outline" variant="secondary" disabled={remaining <= 0 || submitting} onPress={() => addFiles(pickFromCamera)} /></View>
-          <View style={styles.flex}><Button title="Photos" icon="images-outline" variant="secondary" disabled={remaining <= 0 || submitting} onPress={() => addFiles(() => pickFromLibrary(remaining))} /></View>
-          <View style={styles.flex}><Button title="PDF" icon="document-outline" variant="secondary" disabled={remaining <= 0 || submitting} onPress={() => addFiles(() => pickPdfs(remaining))} /></View>
-        </View>
-      </Section>
+        </Section>
+      ) : null}
 
       <Section title="Pay to">
         <TextField
@@ -254,10 +318,11 @@ export function ClaimForm(p: {
 
 const styles = StyleSheet.create({
   total: { fontSize: 18, fontWeight: '800', color: colors.text },
-  item: { gap: space(2), paddingBottom: space(3), borderBottomWidth: 1, borderBottomColor: colors.border },
-  itemHead: { flexDirection: 'row', justifyContent: 'space-between' },
-  itemNo: { fontWeight: '700', color: colors.text },
-  remove: { color: colors.danger, fontWeight: '600' },
+  item: { gap: space(2) },
+  receipts: { gap: space(2), paddingTop: space(3), borderTopWidth: 1, borderTopColor: colors.border },
+  receiptsHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  subTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
+  count: { fontSize: 12, color: colors.muted },
   hint: { color: colors.muted },
   row: { flexDirection: 'row', gap: space(2) },
   flex: { flex: 1 },
