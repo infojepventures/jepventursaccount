@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatRM, sumCents } from '@jep/shared';
 import { useAuth } from '../../auth/AuthProvider';
 import { ClaimCard } from '../../components/ClaimCard';
@@ -24,6 +24,9 @@ const STATUS_FOR: Record<Segment, StatusFilter> = { pending: 'submitted', topay:
 /** Only a claim with a ready PDF has a doc name + Drive link, so only those can be batch-shared. */
 const isShareable = (c: ClaimRow) => c.pdf.status === 'ready';
 
+/** WhatsApp truncates very long messages; keep batches well under that so nothing silently drops. */
+const MAX_SHARE_TEXT_LENGTH = 60_000;
+
 export default function ReviewTab() {
   const { isAdmin } = useAuth();
   const [segment, setSegment] = useState<Segment>('pending');
@@ -45,6 +48,23 @@ export default function ReviewTab() {
     setSelectedIds(new Set());
   }, [segment]);
 
+  // `rows` comes from a live query: a selected claim can change status (leave the segment) or its
+  // PDF can flip away from 'ready' out from under the selection. Prune those ids so the count/label,
+  // the disabled state, and the shared text always reflect only claims that are still shareable.
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const shareableIds = new Set(rows.filter(isShareable).map((c) => c.id));
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (shareableIds.has(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [rows]);
+
   const exitSelectMode = () => {
     setSelectMode(false);
     setSelectedIds(new Set());
@@ -63,11 +83,17 @@ export default function ReviewTab() {
     setSelectedIds(new Set(rows.filter(isShareable).map((c) => c.id)));
   };
 
-  const selectedClaims = rows.filter((c) => selectedIds.has(c.id));
+  const selectedClaims = rows.filter((c) => selectedIds.has(c.id) && isShareable(c));
 
   const shareSelected = () =>
     run(async () => {
-      await shareTextToWhatsApp(buildWhatsAppBatchText(selectedClaims));
+      if (selectedClaims.length === 0) return;
+      const text = buildWhatsAppBatchText(selectedClaims);
+      if (text.length > MAX_SHARE_TEXT_LENGTH) {
+        Alert.alert('Too many claims selected — please share in smaller batches.');
+        return;
+      }
+      await shareTextToWhatsApp(text);
       exitSelectMode();
     });
 
@@ -129,10 +155,10 @@ export default function ReviewTab() {
           </View>
           <View style={styles.bottomBarBtn}>
             <Button
-              title={`WhatsApp (${selectedIds.size})`}
+              title={`WhatsApp (${selectedClaims.length})`}
               icon="logo-whatsapp"
               loading={busy}
-              disabled={selectedIds.size === 0}
+              disabled={selectedClaims.length === 0}
               onPress={shareSelected}
             />
           </View>
