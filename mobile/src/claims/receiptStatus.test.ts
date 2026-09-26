@@ -10,6 +10,11 @@ describe('receiptStatus', () => {
     expect(receiptStatus({ ...base, progress: 0.456 })).toEqual({ label: 'Uploading 46%', tone: 'busy', progress: 0.456 });
   });
 
+  it('never shows more than 100%, and says the upload is finishing once all bytes are sent', () => {
+    expect(receiptStatus({ ...base, progress: 1.48 })).toEqual({ label: 'Finishing upload…', tone: 'busy', progress: 1 });
+    expect(receiptStatus({ ...base, progress: 1 })).toEqual({ label: 'Finishing upload…', tone: 'busy', progress: 1 });
+  });
+
   it('offers an upload retry when the upload failed', () => {
     expect(receiptStatus({ ...base, error: 'Network down' })).toEqual({ label: 'Upload failed', tone: 'danger', retry: 'upload' });
   });

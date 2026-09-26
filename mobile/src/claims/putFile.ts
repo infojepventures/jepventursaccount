@@ -8,7 +8,8 @@ export const putFile: PutFile = async (url, uri, mimeType, onProgress) => {
     xhr.open('PUT', url);
     xhr.setRequestHeader('Content-Type', mimeType);
     xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(e.loaded / e.total);
+      // Android can report `loaded` beyond `total` (seen as "148%"), so clamp.
+      if (e.lengthComputable && e.total > 0) onProgress(Math.min(1, e.loaded / e.total));
     };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
