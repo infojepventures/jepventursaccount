@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../../auth/AuthProvider';
+import { BatchSelectToolbar, BatchShareBar, useBatchShareSelection } from '../../components/batchShare';
 import { ClaimCard } from '../../components/ClaimCard';
 import { FilterChips } from '../../components/FilterChips';
 import { useMyClaims, type StatusFilter } from '../../data/useClaims';
@@ -22,11 +23,20 @@ export default function MyClaimsTab() {
   const router = useRouter();
   const [filter, setFilter] = useState<StatusFilter>('all');
   const { data, loading, error } = useMyClaims(user?.uid, filter);
+  const batch = useBatchShareSelection(data, filter);
 
   return (
     <View style={styles.root}>
       <View>
         <FilterChips options={FILTERS} value={filter} onChange={setFilter} />
+      </View>
+      <View style={styles.toolbar}>
+        <BatchSelectToolbar
+          selectMode={batch.selectMode}
+          onSelect={batch.toggleSelectMode}
+          onSelectAll={batch.selectAll}
+          onCancel={batch.exit}
+        />
       </View>
       {loading ? (
         <ActivityIndicator style={{ marginTop: space(10) }} color={colors.primary} />
@@ -34,8 +44,16 @@ export default function MyClaimsTab() {
         <FlatList
           data={data}
           keyExtractor={(c) => c.id}
-          renderItem={({ item }) => <ClaimCard claim={item} />}
-          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <ClaimCard
+              claim={item}
+              selectable={batch.selectMode}
+              selected={batch.isSelected(item.id)}
+              disabled={batch.selectMode && !batch.isShareable(item)}
+              onToggle={() => batch.toggle(item.id)}
+            />
+          )}
+          contentContainerStyle={[styles.list, batch.selectMode && styles.listWithBar]}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyText}>{error ?? 'No claims here yet.'}</Text>
@@ -44,13 +62,18 @@ export default function MyClaimsTab() {
           }
         />
       )}
+      {batch.selectMode ? (
+        <BatchShareBar count={batch.selectedClaims.length} busy={batch.busy} onCancel={batch.exit} onShare={batch.share} />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingHorizontal: space(4) },
   list: { padding: space(4), paddingTop: 0, gap: space(3) },
+  listWithBar: { paddingBottom: space(20) },
   empty: { alignItems: 'center', gap: space(4), marginTop: space(16) },
   emptyText: { color: colors.muted },
 });

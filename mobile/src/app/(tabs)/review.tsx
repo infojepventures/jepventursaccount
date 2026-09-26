@@ -1,17 +1,13 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { formatRM, sumCents } from '@jep/shared';
 import { useAuth } from '../../auth/AuthProvider';
+import { BatchSelectToolbar, BatchShareBar, useBatchShareSelection } from '../../components/batchShare';
 import { ClaimCard } from '../../components/ClaimCard';
 import { FilterChips } from '../../components/FilterChips';
-import { useClaimsByStatus, type ClaimRow, type StatusFilter } from '../../data/useClaims';
-import { buildWhatsAppBatchText } from '../../files/claimShareText';
-import { shareTextToWhatsApp } from '../../files/shareFile';
-import { Button } from '../../ui/Button';
+import { useClaimsByStatus, type StatusFilter } from '../../data/useClaims';
 import { TextField } from '../../ui/TextField';
 import { colors, space } from '../../ui/theme';
-import { useBusy } from '../../ui/useBusy';
 
 type Segment = 'pending' | 'topay' | 'all';
 const SEGMENTS: { value: Segment; label: string }[] = [
@@ -21,19 +17,10 @@ const SEGMENTS: { value: Segment; label: string }[] = [
 ];
 const STATUS_FOR: Record<Segment, StatusFilter> = { pending: 'submitted', topay: 'approved', all: 'all' };
 
-/** Only a claim with a ready PDF has a doc name + Drive link, so only those can be batch-shared. */
-const isShareable = (c: ClaimRow) => c.pdf.status === 'ready';
-
-/** WhatsApp truncates very long messages; keep batches well under that so nothing silently drops. */
-const MAX_SHARE_TEXT_LENGTH = 60_000;
-
 export default function ReviewTab() {
   const { isAdmin } = useAuth();
   const [segment, setSegment] = useState<Segment>('pending');
   const [search, setSearch] = useState('');
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [busy, run] = useBusy();
   const { data, loading, error } = useClaimsByStatus(STATUS_FOR[segment], isAdmin);
 
   const rows = useMemo(() => {
@@ -42,60 +29,7 @@ export default function ReviewTab() {
     return data.filter((c) => c.refNo.toLowerCase().includes(q) || c.applicant.name.toLowerCase().includes(q));
   }, [data, search, segment]);
 
-  // Selection is only meaningful for the currently visible segment/list; clear it whenever either changes.
-  useEffect(() => {
-    setSelectMode(false);
-    setSelectedIds(new Set());
-  }, [segment]);
-
-  // `rows` comes from a live query: a selected claim can change status (leave the segment) or its
-  // PDF can flip away from 'ready' out from under the selection. Prune those ids so the count/label,
-  // the disabled state, and the shared text always reflect only claims that are still shareable.
-  useEffect(() => {
-    setSelectedIds((prev) => {
-      if (prev.size === 0) return prev;
-      const shareableIds = new Set(rows.filter(isShareable).map((c) => c.id));
-      let changed = false;
-      const next = new Set<string>();
-      prev.forEach((id) => {
-        if (shareableIds.has(id)) next.add(id);
-        else changed = true;
-      });
-      return changed ? next : prev;
-    });
-  }, [rows]);
-
-  const exitSelectMode = () => {
-    setSelectMode(false);
-    setSelectedIds(new Set());
-  };
-
-  const toggleRow = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const selectAll = () => {
-    setSelectedIds(new Set(rows.filter(isShareable).map((c) => c.id)));
-  };
-
-  const selectedClaims = rows.filter((c) => selectedIds.has(c.id) && isShareable(c));
-
-  const shareSelected = () =>
-    run(async () => {
-      if (selectedClaims.length === 0) return;
-      const text = buildWhatsAppBatchText(selectedClaims);
-      if (text.length > MAX_SHARE_TEXT_LENGTH) {
-        Alert.alert('Too many claims selected — please share in smaller batches.');
-        return;
-      }
-      await shareTextToWhatsApp(text);
-      exitSelectMode();
-    });
+  const batch = useBatchShareSelection(rows, segment);
 
   if (!isAdmin) return null;
   return (
@@ -113,20 +47,12 @@ export default function ReviewTab() {
             {data.length} claim{data.length === 1 ? '' : 's'} · {formatRM(sumCents(data.map((c) => ({ amountCents: c.totalCents }))))}
           </Text>
         )}
-        {selectMode ? (
-          <View style={styles.selectRow}>
-            <Pressable onPress={selectAll} style={styles.selectAllBtn}>
-              <Text style={styles.selectAllText}>Select all</Text>
-            </Pressable>
-            <Pressable onPress={exitSelectMode} style={styles.selectAllBtn}>
-              <Text style={styles.selectAllText}>Cancel</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <Pressable onPress={() => setSelectMode(true)} style={styles.selectToggle}>
-            <Text style={styles.selectToggleText}>Select</Text>
-          </Pressable>
-        )}
+        <BatchSelectToolbar
+          selectMode={batch.selectMode}
+          onSelect={batch.toggleSelectMode}
+          onSelectAll={batch.selectAll}
+          onCancel={batch.exit}
+        />
       </View>
       {loading ? (
         <ActivityIndicator style={{ marginTop: space(10) }} color={colors.primary} />
@@ -138,31 +64,18 @@ export default function ReviewTab() {
             <ClaimCard
               claim={item}
               showApplicant
-              selectable={selectMode}
-              selected={selectedIds.has(item.id)}
-              disabled={selectMode && !isShareable(item)}
-              onToggle={() => toggleRow(item.id)}
+              selectable={batch.selectMode}
+              selected={batch.isSelected(item.id)}
+              disabled={batch.selectMode && !batch.isShareable(item)}
+              onToggle={() => batch.toggle(item.id)}
             />
           )}
-          contentContainerStyle={[styles.list, selectMode && styles.listWithBar]}
+          contentContainerStyle={[styles.list, batch.selectMode && styles.listWithBar]}
           ListEmptyComponent={<Text style={styles.empty}>{error ?? 'Nothing here. 🎉'}</Text>}
         />
       )}
-      {selectMode ? (
-        <View style={styles.bottomBar}>
-          <View style={styles.bottomBarBtn}>
-            <Button title="Cancel" variant="secondary" onPress={exitSelectMode} />
-          </View>
-          <View style={styles.bottomBarBtn}>
-            <Button
-              title={`WhatsApp (${selectedClaims.length})`}
-              icon="logo-whatsapp"
-              loading={busy}
-              disabled={selectedClaims.length === 0}
-              onPress={shareSelected}
-            />
-          </View>
-        </View>
+      {batch.selectMode ? (
+        <BatchShareBar count={batch.selectedClaims.length} busy={batch.busy} onCancel={batch.exit} onShare={batch.share} />
       ) : null}
     </View>
   );
@@ -173,26 +86,7 @@ const styles = StyleSheet.create({
   toolbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space(4) },
   search: { flex: 1, paddingBottom: space(3) },
   summary: { flex: 1, paddingBottom: space(2), color: colors.muted },
-  selectToggle: { paddingVertical: space(2), paddingHorizontal: space(3) },
-  selectToggleText: { color: colors.primary, fontWeight: '600' },
-  selectRow: { flexDirection: 'row', alignItems: 'center', gap: space(3) },
-  selectAllBtn: { paddingVertical: space(2), paddingHorizontal: space(1) },
-  selectAllText: { color: colors.primary, fontWeight: '600' },
   list: { padding: space(4), paddingTop: 0, gap: space(3) },
   listWithBar: { paddingBottom: space(20) },
   empty: { textAlign: 'center', color: colors.muted, marginTop: space(16) },
-  bottomBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space(3),
-    padding: space(4),
-    backgroundColor: colors.card,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  bottomBarBtn: { flex: 1 },
 });
