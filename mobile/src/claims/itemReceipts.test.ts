@@ -21,8 +21,8 @@ describe('item receipts', () => {
     expect(unlinkedReceipts(list, items).map((a) => a.key)).toEqual(['old', 'orphan']);
   });
 
-  it('orders receipts for submission item by item, then the unlinked ones, so the PDF follows the items', () => {
-    expect(orderByItem(list, items).map((a) => a.key)).toEqual(['b', 'a', 'c', 'old', 'orphan']);
+  it("orders receipts for submission: a resubmitted claim's saved ones first, then item by item", () => {
+    expect(orderByItem(list, items).map((a) => a.key)).toEqual(['old', 'orphan', 'b', 'a', 'c']);
   });
 });
 

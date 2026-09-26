@@ -13,7 +13,10 @@ export function unlinkedReceipts(list: AnyAttachment[], items: { key: string }[]
   return list.filter((a) => !a.itemKey || !keys.has(a.itemKey));
 }
 
-/** Submission order: each item's receipts in item order, then unlinked ones — so the merged PDF follows the items. */
+/**
+ * Submission order: unlinked receipts first (a resubmitted claim's saved files keep their place), then each
+ * item's receipts in item order — so the merged PDF follows the items.
+ */
 export function orderByItem(list: AnyAttachment[], items: { key: string }[]): AnyAttachment[] {
-  return [...items.flatMap((i) => receiptsForItem(list, i.key)), ...unlinkedReceipts(list, items)];
+  return [...unlinkedReceipts(list, items), ...items.flatMap((i) => receiptsForItem(list, i.key))];
 }
