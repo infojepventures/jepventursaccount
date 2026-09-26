@@ -42,10 +42,57 @@ function friendlyDownloadError(status: number): string {
   return `Could not download this file (${status}). Please try again.`;
 }
 
+/**
+ * Strips characters outside `[A-Za-z0-9_-]` so a file id is safe to use as a directory name.
+ */
+function sanitizeFileId(id: string): string {
+  const cleaned = (id ?? '').replace(/[^A-Za-z0-9_-]/g, '_');
+  return cleaned || 'file';
+}
+
+function shareCacheRoot(): string {
+  return `${FileSystem.cacheDirectory ?? ''}share/`;
+}
+
+/**
+ * Best-effort removal of stale per-file share directories other than the one currently in use,
+ * so the cache doesn't grow unbounded across repeated shares. Failures are ignored: a missing
+ * cache root or a locked file should never block the current share.
+ */
+async function cleanupOldShareDirs(currentDirName: string): Promise<void> {
+  const root = shareCacheRoot();
+  try {
+    const entries = await FileSystem.readDirectoryAsync(root);
+    await Promise.all(
+      entries
+        .filter((entry) => entry !== currentDirName)
+        .map((entry) => FileSystem.deleteAsync(`${root}${entry}`, { idempotent: true }).catch(() => undefined)),
+    );
+  } catch {
+    // Cache root doesn't exist yet, or listing failed; nothing to clean up.
+  }
+}
+
+/**
+ * Downloads into `${cacheDirectory}share/${sanitizedFileId}/${fileName}` rather than directly
+ * under the cache root: two different files that happen to share a display name (e.g. the
+ * default `claim.pdf`) would otherwise overwrite each other while a previous share might still
+ * be reading the old one.
+ */
 async function downloadToCache(claimId: string, fileId: string, fileName: string): Promise<string> {
   const url = api.fileUrl(claimId, fileId);
   const headers = await api.authHeaders();
-  const dest = `${FileSystem.cacheDirectory ?? ''}${fileName}`;
+  const dirName = sanitizeFileId(fileId);
+  const dir = `${shareCacheRoot()}${dirName}/`;
+  const dest = `${dir}${fileName}`;
+
+  await cleanupOldShareDirs(dirName);
+
+  try {
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  } catch {
+    // Directory may already exist; a real failure will surface from downloadAsync below.
+  }
 
   let result: FileSystem.FileSystemDownloadResult;
   try {

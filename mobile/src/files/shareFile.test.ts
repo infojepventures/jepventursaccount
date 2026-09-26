@@ -22,12 +22,17 @@ const mockDownloadAsync = jest.fn(async (_url: string, _dest: string, _options: 
 });
 const mockDeleteAsync = jest.fn(async (_uri: string, _options: unknown) => undefined);
 const mockGetContentUriAsync = jest.fn(async (uri: string) => `content://${uri}`);
+const mockMakeDirectoryAsync = jest.fn(async (_dir: string, _options: unknown) => undefined);
+let mockShareDirEntries: string[] = [];
+const mockReadDirectoryAsync = jest.fn(async (_dir: string) => mockShareDirEntries);
 
 jest.mock('expo-file-system/legacy', () => ({
   cacheDirectory: 'file:///cache/',
   downloadAsync: (url: string, dest: string, options: unknown) => mockDownloadAsync(url, dest, options),
   deleteAsync: (uri: string, options: unknown) => mockDeleteAsync(uri, options),
   getContentUriAsync: (uri: string) => mockGetContentUriAsync(uri),
+  makeDirectoryAsync: (dir: string, options: unknown) => mockMakeDirectoryAsync(dir, options),
+  readDirectoryAsync: (dir: string) => mockReadDirectoryAsync(dir),
 }));
 
 let mockIntentError: Error | null = null;
@@ -91,30 +96,46 @@ describe('shouldAttemptWhatsappIntent', () => {
 describe('shareClaimFile', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockDownloadResult = { status: 200, uri: 'file:///cache/claim.pdf' };
+    mockDownloadResult = { status: 200, uri: 'file:///cache/share/f1/claim.pdf' };
     mockDownloadError = null;
     mockIntentError = null;
     mockIsAvailableAsync.mockResolvedValue(true);
+    mockShareDirEntries = [];
   });
 
   const call = (target: 'whatsapp' | 'any' = 'whatsapp') =>
     shareClaimFile({ claimId: 'c1', fileId: 'f1', name: 'claim.pdf', mimeType: 'application/pdf', target });
 
-  it('downloads with the auth header into the cache directory under the sanitised name', async () => {
+  it('downloads with the auth header into a per-file-id cache subdirectory under the sanitised name', async () => {
     await call('any');
+    expect(mockMakeDirectoryAsync).toHaveBeenCalledWith('file:///cache/share/f1/', { intermediates: true });
     expect(mockDownloadAsync).toHaveBeenCalledWith(
       'https://api.example/file?claimId=c1&fileId=f1',
-      'file:///cache/claim.pdf',
+      'file:///cache/share/f1/claim.pdf',
       { headers: { Authorization: 'Bearer token' } },
     );
   });
 
+  it('sanitises an unsafe fileId before using it as a directory name', async () => {
+    await shareClaimFile({ claimId: 'c1', fileId: '../f1?', name: 'claim.pdf', mimeType: 'application/pdf', target: 'any' });
+    expect(mockMakeDirectoryAsync).toHaveBeenCalledWith('file:///cache/share/___f1_/', { intermediates: true });
+  });
+
+  it('cleans up other stale per-fileId directories, but keeps the current one', async () => {
+    mockShareDirEntries = ['f1', 'old-file-2', 'old-file-3'];
+    await call('any');
+    expect(mockReadDirectoryAsync).toHaveBeenCalledWith('file:///cache/share/');
+    expect(mockDeleteAsync).toHaveBeenCalledWith('file:///cache/share/old-file-2', { idempotent: true });
+    expect(mockDeleteAsync).toHaveBeenCalledWith('file:///cache/share/old-file-3', { idempotent: true });
+    expect(mockDeleteAsync).not.toHaveBeenCalledWith('file:///cache/share/f1', { idempotent: true });
+  });
+
   it('shares straight to WhatsApp via the intent when it succeeds on android', async () => {
     await call('whatsapp');
-    expect(mockGetContentUriAsync).toHaveBeenCalledWith('file:///cache/claim.pdf');
+    expect(mockGetContentUriAsync).toHaveBeenCalledWith('file:///cache/share/f1/claim.pdf');
     expect(mockStartActivityAsync).toHaveBeenCalledWith('android.intent.action.SEND', {
       type: 'application/pdf',
-      extra: { 'android.intent.extra.STREAM': 'content://file:///cache/claim.pdf' },
+      extra: { 'android.intent.extra.STREAM': 'content://file:///cache/share/f1/claim.pdf' },
       packageName: 'com.whatsapp',
       flags: 1,
     });
@@ -125,7 +146,7 @@ describe('shareClaimFile', () => {
     mockIntentError = new Error('ActivityNotFoundException');
     await call('whatsapp');
     expect(mockStartActivityAsync).toHaveBeenCalled();
-    expect(mockShareAsync).toHaveBeenCalledWith('file:///cache/claim.pdf', {
+    expect(mockShareAsync).toHaveBeenCalledWith('file:///cache/share/f1/claim.pdf', {
       mimeType: 'application/pdf',
       dialogTitle: 'Share',
       UTI: 'com.adobe.pdf',
@@ -139,10 +160,10 @@ describe('shareClaimFile', () => {
   });
 
   it('surfaces a friendly message and cleans up the partial file for a 413 response', async () => {
-    mockDownloadResult = { status: 413, uri: 'file:///cache/claim.pdf' };
+    mockDownloadResult = { status: 413, uri: 'file:///cache/share/f1/claim.pdf' };
     await expect(call('any')).rejects.toThrow(ShareFileError);
     await expect(call('any')).rejects.toThrow(/too large to share from the app/);
-    expect(mockDeleteAsync).toHaveBeenCalledWith('file:///cache/claim.pdf', { idempotent: true });
+    expect(mockDeleteAsync).toHaveBeenCalledWith('file:///cache/share/f1/claim.pdf', { idempotent: true });
   });
 
   it('surfaces a friendly message for a 403 response', async () => {
