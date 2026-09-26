@@ -10,17 +10,45 @@
     "android": {
       "package": "com.jepventures.account",
       "googleServicesFile": "./google-services.json",
-      "adaptiveIcon": { "foregroundImage": "./assets/adaptive-icon.png", "backgroundColor": "#111111" },
-      "permissions": ["CAMERA"]
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#111111"
+      },
+      "permissions": [
+        "CAMERA"
+      ]
     },
-    "ios": { "bundleIdentifier": "com.jepventures.account", "supportsTablet": false },
+    "ios": {
+      "bundleIdentifier": "com.jepventures.account",
+      "supportsTablet": false
+    },
     "plugins": [
       "expo-router",
       "@react-native-google-signin/google-signin",
-      ["expo-image-picker", { "cameraPermission": "Allow JEP Claims to take photos of your receipts." }],
-      ["expo-splash-screen", { "image": "./assets/splash-icon.png", "imageWidth": 200, "backgroundColor": "#111111" }],
-      ["expo-notifications", { "color": "#111111" }]
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow JEP Claims to take photos of your receipts."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#111111"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#111111"
+        }
+      ],
+      "expo-sharing"
     ],
-    "experiments": { "typedRoutes": true }
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

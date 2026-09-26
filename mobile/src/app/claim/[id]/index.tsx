@@ -6,6 +6,7 @@ import { useAuth } from '../../../auth/AuthProvider';
 import { remoteAttachments } from '../../../claims/draft';
 import { AttachmentList } from '../../../components/AttachmentList';
 import { useClaim } from '../../../data/useClaims';
+import { shareClaimFile } from '../../../files/shareFile';
 import { api } from '../../../lib/apiInstance';
 import { Button } from '../../../ui/Button';
 import { PromptModal } from '../../../ui/PromptModal';
@@ -87,17 +88,36 @@ export default function ClaimDetailScreen() {
               ) : null}
             </>
           ) : claim.pdf.status === 'ready' && claim.pdf.driveFileId ? (
-            <Button
-              title="View PDF"
-              icon="document-text-outline"
-              variant="secondary"
-              onPress={() =>
-                router.push({
-                  pathname: '/viewer',
-                  params: { claimId: claim.id, fileId: claim.pdf.driveFileId!, mimeType: 'application/pdf', name: claim.pdf.fileName ?? 'claim.pdf' },
-                })
-              }
-            />
+            <View style={styles.pdfActions}>
+              <Button
+                title="View PDF"
+                icon="document-text-outline"
+                variant="secondary"
+                onPress={() =>
+                  router.push({
+                    pathname: '/viewer',
+                    params: { claimId: claim.id, fileId: claim.pdf.driveFileId!, mimeType: 'application/pdf', name: claim.pdf.fileName ?? 'claim.pdf' },
+                  })
+                }
+              />
+              <Button
+                title="WhatsApp"
+                icon="logo-whatsapp"
+                variant="secondary"
+                loading={busy}
+                onPress={() =>
+                  run(async () => {
+                    await shareClaimFile({
+                      claimId: claim.id,
+                      fileId: claim.pdf.driveFileId!,
+                      name: claim.pdf.fileName ?? 'claim.pdf',
+                      mimeType: 'application/pdf',
+                      target: 'whatsapp',
+                    });
+                  })
+                }
+              />
+            </View>
           ) : (
             <>
               <Text style={{ color: colors.danger }}>PDF generation failed: {claim.pdf.error}</Text>
@@ -192,6 +212,7 @@ const styles = StyleSheet.create({
   total: { fontSize: 32, fontWeight: '800', color: colors.text },
   muted: { color: colors.muted },
   inline: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
+  pdfActions: { gap: space(3) },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: space(3) },
   label: { flex: 1, color: colors.muted },
   value: { flex: 1, textAlign: 'right', color: colors.text, fontWeight: '500' },
