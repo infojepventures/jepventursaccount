@@ -145,12 +145,15 @@ export class DriveClient implements DriveApi {
     return { id: d.id };
   }
 
+  /** Moves a file or folder to the trash. Already gone (404, e.g. deleted by hand) counts as done. */
   async trash(fileId: string): Promise<void> {
-    await this.json(`${API}/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=id`, {
+    const res = await this.req(`${API}/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=id`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ trashed: true }),
     });
+    if (res.status === 404) return;
+    if (!res.ok) throw new Error(`Drive PATCH failed: ${res.status} ${await res.text()}`);
   }
 
   async rename(fileId: string, name: string): Promise<void> {

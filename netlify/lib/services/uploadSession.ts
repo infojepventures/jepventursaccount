@@ -13,18 +13,26 @@ import { attachmentsFolderFor } from './attachmentsFolder';
 interface UploadFolderDoc {
   uid: string;
   folderId: string;
+  /** Time of the latest upload session (refreshed on each one); the daily cleanup counts 24 h from here. */
   createdAt: Timestamp;
+  /** Set by the daily cleanup once it has claimed the folder for trashing (see discardUploads.ts). */
+  cleaning?: boolean;
 }
 
 /** Binds a new claim's upload folder to the uid that first requests it, so a second requester can't hijack it. */
 async function resolveNewClaimFolder(deps: Deps, actor: Actor, claimId: string): Promise<string> {
   const ref = deps.db.collection(COL.uploadFolders).doc(claimId);
-  const snap = await ref.get();
-  if (snap.exists) {
+  // In a transaction with the cleanup's claim step, so an upload never lands in a folder being trashed.
+  const existingFolder = await deps.db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return null;
     const bound = snap.data() as UploadFolderDoc;
     if (bound.uid !== actor.uid) throw fail.forbidden();
+    if (bound.cleaning) throw fail.invalid('Receipts left unsubmitted for over 24 hours are being cleared. Please try again in a minute.');
+    tx.update(ref, { createdAt: Timestamp.fromDate(deps.now()) });
     return bound.folderId;
-  }
+  });
+  if (existingFolder) return existingFolder;
 
   const folderId = await attachmentsFolderFor(deps, formatYyyyMm(deps.now()).slice(0, 4), claimId);
   try {

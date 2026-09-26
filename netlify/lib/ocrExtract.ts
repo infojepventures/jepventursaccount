@@ -138,11 +138,11 @@ function detectBank(text: string): string | undefined {
  * disclaimers like "invoice not valid" don't match; the captured value must contain a digit (checked below).
  */
 const REF_LABEL =
-  /\b(?:invoice|inv|receipt|bill|doc|ref(?:erence)?)\b\.?\s*(?:no\b\.?|number\b|#)?\s*(?:[:#]|\s-\s)?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i;
+  /\b(?:invoice|inv|receipt|bill|doc|ref(?:erence)?)\b\.? ?(?:no\b\.? ?|number\b ?|# ?)?(?:[:#] ?|- )?([A-Z0-9][A-Z0-9\-\/]{2,})/i;
 /** Fallback bare reference token, e.g. INV-000317, ICS-000024. */
 const REF_TOKEN = /\b[A-Z]{2,6}-\d{3,}\b/;
 /** Bare "No" label, e.g. "No .0000018900" or "No: 18900"; the value needs 5+ digits (checked below). */
-const BARE_NO_LABEL = /\bNo\b\s*[.:#]?\s*[.:#]?\s*([A-Z0-9][A-Z0-9\-\/]{4,})/gi;
+const BARE_NO_LABEL = /\bNo\b ?[.:#]? ?[.:#]? ?([A-Z0-9][A-Z0-9\-\/]{4,})/gi;
 /** Words before a bare "No" that make it a phone/account/room number rather than a document number. */
 const BARE_NO_EXCLUDE = /\b(?:tel|phone|mobile|hp|fax|contact|a\/?c|acc(?:oun)?t|room|table|reg(?:istration)?|ic|unit|lot)\.?\s*$/i;
 
@@ -237,19 +237,27 @@ function findDescriptionFromText(lines: string[]): string | undefined {
   return undefined;
 }
 
+const MAX_LINE_CHARS = 500;
+
 /**
  * Pure, Document-AI-free extraction from raw attachment text (on-device OCR for images, or
  * pdfjs-extracted text for PDFs). See spec §15 for the rule list.
  */
 export function extractSuggestionFromText(text: string): AttachmentSuggestion {
-  const lines = (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+  // The text can come straight from a client (up to 20k chars): collapse whitespace runs and cap line length
+  // first, so no rule's regex can be driven into super-linear backtracking by long runs of spaces.
+  const lines = (text ?? '')
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, ' ').trim().slice(0, MAX_LINE_CHARS))
+    .filter((l) => l.length > 0);
+  const clean = lines.join('\n');
 
-  const reference = findReferenceFromText(text ?? '', lines);
+  const reference = findReferenceFromText(clean, lines);
   const description = findDescriptionFromText(lines);
   const amountCents = findAmountFromText(lines);
   const accountHolder = findAccountHolderFromText(lines);
-  const bankName = detectBank(text ?? '');
-  const accountNumber = extractAccountNumber(text ?? '', bankName);
+  const bankName = detectBank(clean);
+  const accountNumber = extractAccountNumber(clean, bankName);
 
   // An invoice issued by JEP itself carries JEP's own bank details, which are never a claim payee.
   const isOwnCompany = accountHolder !== undefined && OWN_COMPANY.test(accountHolder);

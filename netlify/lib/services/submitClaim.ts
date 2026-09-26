@@ -127,7 +127,16 @@ export async function submitClaim(deps: Deps, actor: Actor, req: SubmitClaimRequ
       updatedAt: now,
     };
     try {
-      await ref.create(doc);
+      // Re-check the upload binding in the same transaction as the create: the daily cleanup claims it in a
+      // transaction before trashing, so either this submit wins (cleanup then sees the claim) or it refuses.
+      const bindingRef = deps.db.collection(COL.uploadFolders).doc(req.claimId);
+      await deps.db.runTransaction(async (tx) => {
+        const binding = await tx.get(bindingRef);
+        if (!binding.exists || (binding.data() as { cleaning?: boolean }).cleaning) {
+          throw fail.invalid('These receipts were cleared after 24 hours without submitting. Please remove them and add them again.');
+        }
+        tx.create(ref, doc);
+      });
     } catch (e) {
       if (!isAlreadyExists(e)) throw e;
       // Lost a create race against a concurrent identical request: fall back to the same idempotency check.

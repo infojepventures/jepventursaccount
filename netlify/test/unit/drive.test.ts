@@ -90,6 +90,11 @@ describe('DriveClient', () => {
     expect(JSON.parse(String(f.calls[0]!.init.body))).toEqual({ trashed: true });
   });
 
+  it('treats trashing a file that no longer exists as done, but still throws on other errors', async () => {
+    await expect(new DriveClient(token, fakeFetch([json({ error: 'gone' }, 404)]).impl).trash('A')).resolves.toBeUndefined();
+    await expect(new DriveClient(token, fakeFetch([json({ error: 'nope' }, 403)]).impl).trash('A')).rejects.toThrow('403');
+  });
+
   it('renames files with a PATCH', async () => {
     const f = fakeFetch([json({ id: 'A' })]);
     await new DriveClient(token, f.impl).rename('A', 'New Name');

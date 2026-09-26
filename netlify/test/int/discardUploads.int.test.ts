@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { COL } from '../../lib/firestore';
 import { cleanupAbandonedUploads, discardUploads } from '../../lib/services/discardUploads';
 import { reviewClaim } from '../../lib/services/reviewClaim';
+import { submitClaim } from '../../lib/services/submitClaim';
 import { createUploadSessions } from '../../lib/services/uploadSession';
-import { jpgFile, makeTestDeps, newClaimId, resetEmulators, seedActor, submitNewClaim, uploadFiles } from './helpers';
+import { BANK, jpgFile, makeTestDeps, newClaimId, resetEmulators, seedActor, submitNewClaim, uploadFiles } from './helpers';
 
 beforeEach(resetEmulators);
 
@@ -99,5 +100,65 @@ describe('cleanupAbandonedUploads', () => {
     // The submitted claim's folder is untouched.
     const claim = (await t.deps.db.collection(COL.claims).doc(submittedId).get()).data()!;
     expect(t.drive.files.get(claim.attachmentsFolderId)!.trashed).toBe(false);
+  });
+});
+
+describe('cleanup vs. an in-progress claim', () => {
+  const submitReq = (claimId: string, attachmentIds: string[]) => ({
+    claimId,
+    items: [{ description: 'Taxi', amountCents: 1050 }],
+    payment: BANK,
+    attachmentIds,
+    resubmit: false,
+    saveBankToProfile: false,
+  });
+
+  it('a submit refuses (and creates nothing) once cleanup has claimed the upload folder', async () => {
+    const t = makeTestDeps();
+    const alice = await seedActor(t.deps, 'alice');
+    const claimId = newClaimId(t.deps);
+    const ids = await uploadFiles(t, alice, claimId, [jpgFile()]);
+    await t.deps.db.collection(COL.uploadFolders).doc(claimId).update({ cleaning: true });
+
+    await expect(submitClaim(t.deps, alice, submitReq(claimId, ids))).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect((await t.deps.db.collection(COL.claims).doc(claimId).get()).exists).toBe(false);
+  });
+
+  it('each upload restarts the 24-hour clock, so a form still being filled in is not cleaned up', async () => {
+    const t = makeTestDeps();
+    const alice = await seedActor(t.deps, 'alice');
+    const claimId = newClaimId(t.deps);
+    const first = await createUploadSessions(t.deps, alice, { claimId, files: [{ name: 'a.jpg', mimeType: 'image/jpeg', size: 10 }] });
+    t.setNow(new Date('2026-09-26T03:00:00Z')); // 23 hours later: another receipt
+    await createUploadSessions(t.deps, alice, { claimId, files: [{ name: 'b.jpg', mimeType: 'image/jpeg', size: 10 }] });
+    t.setNow(new Date('2026-09-26T05:00:00Z')); // 25 hours after the first, 2 after the last
+
+    expect(await cleanupAbandonedUploads(t.deps)).toEqual({ trashed: 0, forgotten: 0 });
+    expect(t.drive.files.get(first.folderId)!.trashed).toBe(false);
+  });
+
+  it('refuses new uploads into a folder that is being cleaned up', async () => {
+    const t = makeTestDeps();
+    const alice = await seedActor(t.deps, 'alice');
+    const claimId = newClaimId(t.deps);
+    await uploadFiles(t, alice, claimId, [jpgFile()]);
+    await t.deps.db.collection(COL.uploadFolders).doc(claimId).update({ cleaning: true });
+
+    await expect(
+      createUploadSessions(t.deps, alice, { claimId, files: [{ name: 'b.jpg', mimeType: 'image/jpeg', size: 10 }] }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+
+  it('finishes a cleanup that was interrupted after claiming the folder', async () => {
+    const t = makeTestDeps();
+    const alice = await seedActor(t.deps, 'alice');
+    const claimId = newClaimId(t.deps);
+    const session = await createUploadSessions(t.deps, alice, { claimId, files: [{ name: 'a.jpg', mimeType: 'image/jpeg', size: 10 }] });
+    await t.deps.db.collection(COL.uploadFolders).doc(claimId).update({ cleaning: true });
+    t.setNow(new Date('2026-09-26T05:00:00Z'));
+
+    expect(await cleanupAbandonedUploads(t.deps)).toEqual({ trashed: 1, forgotten: 0 });
+    expect(t.drive.files.get(session.folderId)!.trashed).toBe(true);
+    expect((await t.deps.db.collection(COL.uploadFolders).doc(claimId).get()).exists).toBe(false);
   });
 });

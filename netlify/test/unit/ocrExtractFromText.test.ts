@@ -214,4 +214,23 @@ describe('extractSuggestionFromText (free, Document-AI-less path)', () => {
     expect(extractSuggestionFromText('Grand Total 1234.50').amountCents).toBe(123450);
     expect(extractSuggestionFromText('Grand Total RM 12,345.00').amountCents).toBe(1234500);
   });
+
+  it('stays fast on pathological whitespace runs (no catastrophic regex backtracking)', () => {
+    const cases = [
+      'invoice' + ' '.repeat(19_990) + '!',
+      'No' + ' '.repeat(19_990) + '!',
+      'Total' + '\t '.repeat(9_990) + 'x',
+      ('Receipt No ' + ' '.repeat(200)).repeat(90),
+    ];
+    for (const text of cases) {
+      const started = Date.now();
+      extractSuggestionFromText(text);
+      expect(Date.now() - started).toBeLessThan(500);
+    }
+  });
+
+  it('still reads labels whose parts are separated by runs of spaces or tabs', () => {
+    expect(extractSuggestionFromText('Invoice   No  :   INV-000317').reference).toBe('INV-000317');
+    expect(extractSuggestionFromText('No\t.\t0000018900').reference).toBe('0000018900');
+  });
 });

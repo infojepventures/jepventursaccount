@@ -4,16 +4,18 @@ import type { Actor } from '../actor';
 import { assertCan } from '../claimAccess';
 import type { Deps } from '../deps';
 import { fail } from '../errors';
-import { COL, getClaim } from '../firestore';
+import { claimRef, COL, getClaim } from '../firestore';
 
 /** A new claim's uploads are kept this long without a submit before the scheduled cleanup trashes them. */
 export const ABANDONED_UPLOAD_MS = 24 * 60 * 60 * 1000;
-const CLEANUP_BATCH = 200;
+// Each binding costs a transaction and a Drive call; keep a run well inside the scheduled-function time limit.
+const CLEANUP_BATCH = 50;
 
 interface UploadFolderDoc {
   uid: string;
   folderId: string;
   createdAt: Timestamp;
+  cleaning?: boolean;
 }
 
 /**
@@ -66,20 +68,35 @@ export async function cleanupAbandonedUploads(deps: Deps): Promise<{ trashed: nu
   let trashed = 0;
   let forgotten = 0;
   for (const doc of snap.docs) {
-    const { folderId } = doc.data() as UploadFolderDoc;
-    if (await getClaim(deps.db, doc.id)) {
-      forgotten++;
-    } else {
-      try {
-        await deps.drive.trash(folderId);
-        trashed++;
-      } catch (e) {
-        // Keep the binding so the next run retries.
-        console.error('[cleanupAbandonedUploads] trash failed', doc.id, folderId, e);
-        continue;
+    // Claim the folder in a transaction that also checks for a claim. submitClaim creates the claim in a
+    // transaction that re-reads this binding, and uploadSession refreshes it in one, so none of them can
+    // interleave with trashing: a submit either lands first (-> forget) or is refused once `cleaning` is set.
+    const outcome = await deps.db.runTransaction(async (tx) => {
+      const binding = await tx.get(doc.ref);
+      if (!binding.exists) return 'gone' as const;
+      const claim = await tx.get(claimRef(deps.db, doc.id));
+      if (claim.exists) {
+        tx.delete(doc.ref);
+        return 'forgotten' as const;
       }
+      const data = binding.data() as UploadFolderDoc;
+      if (!data.cleaning && data.createdAt.toMillis() >= cutoff.toMillis()) return 'fresh' as const; // uploaded again meanwhile
+      if (!data.cleaning) tx.update(doc.ref, { cleaning: true });
+      return 'trash' as const;
+    });
+    if (outcome === 'forgotten') forgotten++;
+    if (outcome !== 'trash') continue;
+
+    const { folderId } = doc.data() as UploadFolderDoc;
+    try {
+      await deps.drive.trash(folderId);
+    } catch (e) {
+      // Keep the (cleaning) binding so the next run retries.
+      console.error('[cleanupAbandonedUploads] trash failed', doc.id, folderId, e);
+      continue;
     }
     await doc.ref.delete();
+    trashed++;
   }
   return { trashed, forgotten };
 }
