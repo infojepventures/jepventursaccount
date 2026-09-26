@@ -151,4 +151,36 @@ describe('extractSuggestionFromText (free, Document-AI-less path)', () => {
   it('never returns a reference without a digit', () => {
     expect(extractSuggestionFromText('Invoice Date: today\nReceipt No: pending').reference).toBeUndefined();
   });
+
+  it('parses a spa receipt: bare "No ." label, trailing unit-price/discount columns stripped from the description', () => {
+    const text = [
+      'Natural Healing Spa',
+      '(W10-2310-32100031)',
+      'L3-08, 152, Jalan Changkat Thambi Dollah',
+      'BILL TO',
+      'Name: Andy Ngooi(golf) No .0000018900',
+      'Mobile: 60128627688 Sales Date 27/03/2026 22:23',
+      'Description Unit Unit Qty Amount',
+      'Price Discount',
+      'Promo 60min Body + 15min Ear Candling 98.00 0.00 4 392.00',
+      'Aroma oil 15.00 0.00 1 15.00',
+      'Sub Total 407.00',
+      'Sales Include Tax 439.56',
+      'Rounding -0.01',
+      'Grand Total 439.55',
+      'Credit card 439.55',
+    ].join('\n');
+    const s = extractSuggestionFromText(text);
+    expect(s.reference).toBe('0000018900');
+    expect(s.description).toBe('Promo 60min Body + 15min Ear Candling');
+    expect(s.amountCents).toBe(43955);
+    expect(s.payee?.accountNumber).toBeUndefined();
+  });
+
+  it('does not treat phone or account "No" labels as a document number', () => {
+    expect(extractSuggestionFromText('Tel No: 0321234567').reference).toBeUndefined();
+    expect(extractSuggestionFromText('Mobile No. 60128627688').reference).toBeUndefined();
+    expect(extractSuggestionFromText('Account No: 8605461067').reference).toBeUndefined();
+    expect(extractSuggestionFromText('Room No 12').reference).toBeUndefined();
+  });
 });

@@ -141,12 +141,24 @@ const REF_LABEL =
   /\b(?:invoice|inv|receipt|bill|doc|ref(?:erence)?)\b\.?\s*(?:no\b\.?|number\b|#)?\s*(?:[:#]|\s-\s)?\s*([A-Z0-9][A-Z0-9\-\/]{2,})/i;
 /** Fallback bare reference token, e.g. INV-000317, ICS-000024. */
 const REF_TOKEN = /\b[A-Z]{2,6}-\d{3,}\b/;
+/** Bare "No" label, e.g. "No .0000018900" or "No: 18900"; the value needs 5+ digits (checked below). */
+const BARE_NO_LABEL = /\bNo\b\s*[.:#]?\s*[.:#]?\s*([A-Z0-9][A-Z0-9\-\/]{4,})/gi;
+/** Words before a bare "No" that make it a phone/account/room number rather than a document number. */
+const BARE_NO_EXCLUDE = /\b(?:tel|phone|mobile|hp|fax|contact|a\/?c|acc(?:oun)?t|room|table|reg(?:istration)?|ic|unit|lot)\.?\s*$/i;
 
 function findReferenceFromText(text: string, lines: string[]): string | undefined {
   for (const line of lines) {
     for (const m of line.matchAll(new RegExp(REF_LABEL, 'gi'))) {
       const value = (m[1] ?? '').replace(/[.,;]+$/, '').trim();
       if (/\d/.test(value)) return value;
+    }
+  }
+  for (const line of lines) {
+    for (const m of line.matchAll(BARE_NO_LABEL)) {
+      const value = (m[1] ?? '').replace(/[.,;]+$/, '').trim();
+      if ((value.match(/\d/g) ?? []).length < 5) continue;
+      if (BARE_NO_EXCLUDE.test(line.slice(0, m.index))) continue;
+      return value;
     }
   }
   const token = text.match(REF_TOKEN);
@@ -208,7 +220,8 @@ const LINE_ITEM = /^(.{3,80}?)\s+(?:\d+\s*[xX]?\s*)?(?:RM\s*)?(\d{1,3}(?:,\d{3})
 function findDescriptionFromText(lines: string[]): string | undefined {
   for (const line of lines) {
     const m = line.match(LINE_ITEM);
-    const desc = m?.[1]?.trim();
+    // Strip trailing numeric columns (unit price, discount, %) the lazy capture left behind.
+    const desc = m?.[1]?.replace(/(?:\s+(?:RM\s*)?-?\d{1,3}(?:,\d{3})*\.\d{2}|\s+\d+(?:\.\d+)?%)+$/i, '').trim();
     if (!desc || desc.length < 3) continue;
     if (LINE_ITEM_EXCLUDE.test(line)) continue;
     return desc;

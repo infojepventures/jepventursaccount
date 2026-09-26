@@ -32,6 +32,10 @@ export function ClaimForm(p: {
   const [showErrors, setShowErrors] = useState(false);
   const [aiFields, setAiFields] = useState<Set<string>>(new Set());
   const payeeEditedByUser = useRef(false);
+  // Latest draft for async OCR callbacks: applySuggestion must run outside a setState updater so its
+  // AI-filled field keys are available synchronously (React may defer updaters).
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
   const errors = draftErrors(draft, attachments.length);
   const remaining = MAX_ATTACHMENTS - attachments.length;
@@ -64,13 +68,10 @@ export function ClaimForm(p: {
       // PDFs are text-extracted server-side; images need on-device OCR text sent along.
       const text = mimeType === 'application/pdf' ? undefined : (await recognizeText(uri)) ?? undefined;
       const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId, ...(text ? { text } : {}) });
-      let newAi = new Set<string>();
-      setDraft((d) => {
-        const result = applySuggestion(d, suggestion, { payeeEditedByUser: payeeEditedByUser.current });
-        newAi = result.aiFields;
-        return result.draft;
-      });
-      if (newAi.size) setAiFields((prev) => new Set([...prev, ...newAi]));
+      const result = applySuggestion(draftRef.current, suggestion, { payeeEditedByUser: payeeEditedByUser.current });
+      draftRef.current = result.draft;
+      setDraft(result.draft);
+      if (result.aiFields.size) setAiFields((prev) => new Set([...prev, ...result.aiFields]));
       patchAttachment(key, { analyzing: false, analyzed: true });
     } catch {
       patchAttachment(key, { analyzing: false, analyzed: true, analyzeError: "Couldn't read this receipt" });
