@@ -19,6 +19,7 @@
     "jose": "^6.2.12",
     "jwks-rsa": "^3.2.2",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
     "subset-font": "^2.9.0"
   },
   "devDependencies": {
@@ -27,7 +28,6 @@
     "@types/node": "^22.0.0",
     "esbuild": "^0.28.2",
     "firebase": "^12.19.0",
-    "pdfjs-dist": "^6.3.289",
     "tsx": "^4.23.15",
     "vitest": "^5.0.2"
   }

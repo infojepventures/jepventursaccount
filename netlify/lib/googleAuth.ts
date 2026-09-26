@@ -3,6 +3,7 @@ import { SignJWT, importPKCS8 } from 'jose';
 export const SCOPES = {
   drive: 'https://www.googleapis.com/auth/drive',
   sheets: 'https://www.googleapis.com/auth/spreadsheets',
+  cloudPlatform: 'https://www.googleapis.com/auth/cloud-platform',
 } as const;
 
 export type TokenProvider = () => Promise<string>;

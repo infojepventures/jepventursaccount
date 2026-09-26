@@ -1,3 +1,4 @@
+import type { DocAiApi, DocAiDocument } from '../lib/docai';
 import type { DriveApi, DriveFileMeta } from '../lib/drive';
 import { FOLDER_MIME } from '../lib/drive';
 import type { PushApi, PushMessage } from '../lib/push';
@@ -116,6 +117,18 @@ export class FakeSheets implements SheetsApi {
 
   async deleteClaimRow(claimId: string) {
     this.rows.delete(claimId);
+  }
+}
+
+export class FakeDocAi implements DocAiApi {
+  result: DocAiDocument = { text: '', entities: [] };
+  error: Error | null = null;
+  calls: { data: Uint8Array; mimeType: string }[] = [];
+
+  async process(data: Uint8Array, mimeType: string): Promise<DocAiDocument> {
+    this.calls.push({ data, mimeType });
+    if (this.error) throw this.error;
+    return this.result;
   }
 }
 

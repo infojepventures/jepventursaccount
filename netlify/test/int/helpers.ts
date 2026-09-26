@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import type { BankDetails, UserDoc } from '@jep/shared';
 import { loadActor, type Actor } from '../../lib/actor';
 import { loadPdfAssets } from '../../lib/assets';
@@ -10,7 +10,7 @@ import { getAdminApp } from '../../lib/firebaseAdmin';
 import { CLAIM_SEQ_DOC, COL } from '../../lib/firestore';
 import { createUploadSessions } from '../../lib/services/uploadSession';
 import { submitClaim } from '../../lib/services/submitClaim';
-import { FakeDrive, FakePush, FakeSheets } from '../fakes';
+import { FakeDocAi, FakeDrive, FakePush, FakeSheets } from '../fakes';
 
 const PROJECT = process.env.GCLOUD_PROJECT ?? 'demo-jep';
 
@@ -29,6 +29,7 @@ export function makeTestDeps() {
   const drive = new FakeDrive();
   const sheets = new FakeSheets();
   const push = new FakePush();
+  const docai = new FakeDocAi();
   const triggered: { claimId: string; requestId: string }[] = [];
   let now = new Date('2026-09-25T04:00:00Z');
   let n = 0;
@@ -38,6 +39,7 @@ export function makeTestDeps() {
     drive,
     sheets,
     push,
+    docai,
     rootFolderId: 'root',
     now: () => now,
     newId: () => `req_${++n}`,
@@ -51,6 +53,7 @@ export function makeTestDeps() {
     drive,
     sheets,
     push,
+    docai,
     triggered,
     setNow: (d: Date) => {
       now = d;
@@ -91,6 +94,19 @@ export const pngBytes = () => new Uint8Array(readFileSync('test/fixtures/receipt
 export async function pdfBytes(pages = 1): Promise<Uint8Array> {
   const d = await PDFDocument.create();
   for (let i = 0; i < pages; i++) d.addPage();
+  return d.save();
+}
+
+/** A one-page PDF with each string drawn on its own line, for pdfjs text-extraction tests. */
+export async function pdfBytesWithText(lines: string[]): Promise<Uint8Array> {
+  const d = await PDFDocument.create();
+  const page = d.addPage([400, 500]);
+  const font = await d.embedFont(StandardFonts.Helvetica);
+  let y = 460;
+  for (const line of lines) {
+    if (line) page.drawText(line, { x: 40, y, size: 12, font });
+    y -= 20;
+  }
   return d.save();
 }
 

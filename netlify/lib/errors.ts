@@ -20,6 +20,7 @@ export const fail = {
   statusChanged: () =>
     new ApiError(409, 'STATUS_CHANGED', 'This claim was changed by someone else. Please refresh and try again.'),
   tooLarge: (m: string) => new ApiError(413, 'FILE_TOO_LARGE', m),
+  ocrFailed: (m = "Couldn't read this receipt.") => new ApiError(502, 'OCR_FAILED', m),
 };
 
 export function errorMessage(e: unknown): string {

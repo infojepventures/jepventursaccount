@@ -2,6 +2,7 @@ import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { loadPdfAssets, type PdfAssets } from './assets';
+import { DocumentAiClient, type DocAiApi } from './docai';
 import { DriveClient, type DriveApi } from './drive';
 import { env } from './env';
 import { getAdminApp } from './firebaseAdmin';
@@ -15,6 +16,8 @@ export interface Deps {
   drive: DriveApi;
   sheets: SheetsApi;
   push: PushApi;
+  /** Null when DOCUMENT_AI_ENDPOINT is unset — Document AI is optional; OCR falls back to the free path. */
+  docai: DocAiApi | null;
   rootFolderId: string;
   now: () => Date;
   newId: () => string;
@@ -36,12 +39,24 @@ function createDeps(): Deps {
     privateKey: env('GOOGLE_SA_PRIVATE_KEY').replace(/\\n/g, '\n'),
     scopes: [SCOPES.drive, SCOPES.sheets],
   });
+  const docAiEndpoint = process.env.DOCUMENT_AI_ENDPOINT;
+  const docai = docAiEndpoint
+    ? new DocumentAiClient(
+        docAiEndpoint,
+        createTokenProvider({
+          clientEmail: env('GOOGLE_SA_EMAIL'),
+          privateKey: env('GOOGLE_SA_PRIVATE_KEY').replace(/\\n/g, '\n'),
+          scopes: [SCOPES.cloudPlatform],
+        }),
+      )
+    : null;
   return {
     db: getFirestore(app),
     auth: getAuth(app),
     drive: new DriveClient(getToken),
     sheets: new SheetsClient(getToken, env('GOOGLE_SHEET_ID')),
     push: new FcmPush(getMessaging(app)),
+    docai,
     rootFolderId: env('GOOGLE_ROOT_FOLDER_ID'),
     now: () => new Date(),
     newId: () => crypto.randomUUID(),
