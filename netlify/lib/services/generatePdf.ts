@@ -1,11 +1,22 @@
 import { Timestamp } from 'firebase-admin/firestore';
-import { claimPdfFileName, refNoYear, type ClaimDoc } from '@jep/shared';
+import { claimPdfFileName, driveFileUrl, refNoYear, type ClaimDoc } from '@jep/shared';
 import type { Deps } from '../deps';
 import { errorMessage } from '../errors';
 import { claimRef, getClaim } from '../firestore';
 import { buildClaimPdf, toPdfInput, type PdfAttachment } from '../pdf/buildClaimPdf';
 import { markPdfFailed } from './pdfTrigger';
 import { syncClaimToSheet } from './sheetSync';
+
+/** Best effort: a PDF is still usable (shared with its full Drive link) when shortening is off or fails. */
+async function shortenPdfLink(deps: Deps, fileId: string): Promise<string | null> {
+  if (!deps.shortener) return null;
+  try {
+    return await deps.shortener.shorten(driveFileUrl(fileId));
+  } catch (e) {
+    console.error('[generatePdf] shortening the PDF link failed', fileId, e);
+    return null;
+  }
+}
 
 export async function generatePdf(
   deps: Deps,
@@ -25,13 +36,14 @@ export async function generatePdf(
     const yearFolder = await deps.drive.findOrCreateFolder(deps.rootFolderId, refNoYear(claim.refNo));
     uploadedId = (await deps.drive.upload({ name: fileName, mimeType: 'application/pdf', parentId: yearFolder, data: bytes })).id;
     const newId = uploadedId;
+    const shortUrl = await shortenPdfLink(deps, newId);
 
     const ref = claimRef(deps.db, claimId);
     const outcome = await deps.db.runTransaction(async (tx) => {
       const cur = (await tx.get(ref)).data() as ClaimDoc | undefined;
       if (!cur || cur.pdf.requestId !== requestId) return { superseded: true as const };
       tx.update(ref, {
-        pdf: { status: 'ready', requestId, requestedAt: cur.pdf.requestedAt, driveFileId: newId, fileName, error: null },
+        pdf: { status: 'ready', requestId, requestedAt: cur.pdf.requestedAt, driveFileId: newId, fileName, error: null, shortUrl },
         updatedAt: Timestamp.fromDate(deps.now()),
       });
       return { superseded: false as const, oldId: cur.pdf.driveFileId };

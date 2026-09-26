@@ -10,7 +10,7 @@ import { getAdminApp } from '../../lib/firebaseAdmin';
 import { CLAIM_SEQ_DOC, COL } from '../../lib/firestore';
 import { createUploadSessions } from '../../lib/services/uploadSession';
 import { submitClaim } from '../../lib/services/submitClaim';
-import { FakeDocAi, FakeDrive, FakePush, FakeSheets } from '../fakes';
+import { FakeDocAi, FakeDrive, FakePush, FakeSheets, FakeShortener } from '../fakes';
 
 const PROJECT = process.env.GCLOUD_PROJECT ?? 'demo-jep';
 
@@ -30,6 +30,7 @@ export function makeTestDeps() {
   const sheets = new FakeSheets();
   const push = new FakePush();
   const docai = new FakeDocAi();
+  const shortener = new FakeShortener();
   const triggered: { claimId: string; requestId: string }[] = [];
   let now = new Date('2026-09-25T04:00:00Z');
   let n = 0;
@@ -40,6 +41,7 @@ export function makeTestDeps() {
     sheets,
     push,
     docai,
+    shortener,
     rootFolderId: 'root',
     now: () => now,
     newId: () => `req_${++n}`,
@@ -54,6 +56,7 @@ export function makeTestDeps() {
     sheets,
     push,
     docai,
+    shortener,
     triggered,
     setNow: (d: Date) => {
       now = d;

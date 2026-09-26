@@ -42,6 +42,8 @@ export interface PdfInfo {
   driveFileId: string | null;
   fileName: string | null;
   error: string | null;
+  /** Short link (TinyURL) to the PDF, made when it was generated; absent on older claims or if shortening failed. */
+  shortUrl?: string | null;
 }
 
 export type HistoryAction =

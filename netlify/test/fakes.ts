@@ -3,6 +3,7 @@ import type { DriveApi, DriveFileMeta } from '../lib/drive';
 import { FOLDER_MIME } from '../lib/drive';
 import type { PushApi, PushMessage } from '../lib/push';
 import type { SheetRow, SheetsApi } from '../lib/sheets';
+import type { ShortenerApi } from '../lib/shortener';
 
 interface FakeFile extends DriveFileMeta {
   data: Uint8Array;
@@ -117,6 +118,17 @@ export class FakeSheets implements SheetsApi {
 
   async deleteClaimRow(claimId: string) {
     this.rows.delete(claimId);
+  }
+}
+
+export class FakeShortener implements ShortenerApi {
+  error: Error | null = null;
+  calls: string[] = [];
+
+  async shorten(url: string): Promise<string> {
+    this.calls.push(url);
+    if (this.error) throw this.error;
+    return `https://tinyurl.com/t${this.calls.length}`;
   }
 }
 

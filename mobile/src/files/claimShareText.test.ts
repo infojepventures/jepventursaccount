@@ -35,6 +35,13 @@ describe('buildWhatsAppClaimText', () => {
     );
   });
 
+  it('uses the short link when the PDF has one', () => {
+    const claim = { ...baseClaim, pdf: { ...baseClaim.pdf, shortUrl: 'https://tinyurl.com/2p8xk3ab' } };
+    const text = buildWhatsAppClaimText(claim);
+    expect(text).toContain('https://tinyurl.com/2p8xk3ab');
+    expect(text).not.toContain('drive.google.com');
+  });
+
   it('omits the Drive URL line entirely when the PDF has no driveFileId yet', () => {
     const claim = { ...baseClaim, pdf: { driveFileId: null, fileName: null } };
     expect(buildWhatsAppClaimText(claim)).toBe(
