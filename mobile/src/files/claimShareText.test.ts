@@ -1,4 +1,4 @@
-import { buildWhatsAppClaimText } from './claimShareText';
+import { buildWhatsAppBatchText, buildWhatsAppClaimText } from './claimShareText';
 
 const baseClaim = {
   refNo: 'PR-JEP-202609-001',
@@ -77,6 +77,81 @@ describe('buildWhatsAppClaimText', () => {
         'Total RM 5.00',
         'Maybank',
         '123',
+        'JOHN TAN',
+        '',
+        '*===============*',
+      ].join('\n'),
+    );
+  });
+});
+
+describe('buildWhatsAppBatchText', () => {
+  it('returns byte-identical output to buildWhatsAppClaimText for a single claim', () => {
+    expect(buildWhatsAppBatchText([baseClaim])).toBe(buildWhatsAppClaimText(baseClaim));
+  });
+
+  it('groups claims by normalised payee account (dash-formatted account number, case-differing holder) and keeps a later different account in its own group, in first-appearance order', () => {
+    const claim1 = {
+      refNo: 'PR-JEP-202609-001',
+      totalCents: 3000,
+      items: [
+        { description: 'Parking', amountCents: 1000 },
+        { description: 'Food', amountCents: 2000 },
+      ],
+      payment: { bankName: 'Public Bank', accountNumber: '8011-557404', accountHolder: 'YU WAI LOONG' },
+      pdf: { driveFileId: 'ABC', fileName: 'PR-JEP-202609-001-YU WAI LOONG-30.00.pdf' },
+    };
+    const claim2 = {
+      refNo: 'PR-JEP-202609-003',
+      totalCents: 700,
+      items: [{ description: 'Stationery', amountCents: 700 }],
+      payment: { bankName: 'Maybank', accountNumber: '112233', accountHolder: 'JOHN TAN' },
+      pdf: { driveFileId: 'GHI', fileName: 'PR-JEP-202609-003-JOHN TAN-7.00.pdf' },
+    };
+    const claim3 = {
+      refNo: 'PR-JEP-202609-002',
+      totalCents: 1500,
+      items: [{ description: 'Toll', amountCents: 1500 }],
+      payment: { bankName: 'Public Bank', accountNumber: '8011557404', accountHolder: 'yu wai loong' },
+      pdf: { driveFileId: 'DEF', fileName: 'PR-JEP-202609-002-YU WAI LOONG-15.00.pdf' },
+    };
+
+    expect(buildWhatsAppBatchText([claim1, claim2, claim3])).toBe(
+      [
+        '> *Supplier: YU WAI LOONG*',
+        'PR-JEP-202609-001-YU WAI LOONG-30.00',
+        'https://drive.google.com/file/d/ABC/view',
+        '',
+        '> Parking',
+        'PR-JEP-202609-001 - RM 10.00',
+        '',
+        '> Food',
+        'PR-JEP-202609-001 - RM 20.00',
+        '',
+        '',
+        'PR-JEP-202609-002-YU WAI LOONG-15.00',
+        'https://drive.google.com/file/d/DEF/view',
+        '',
+        '> Toll',
+        'PR-JEP-202609-002 - RM 15.00',
+        '',
+        'Total RM 45.00',
+        'Public Bank',
+        '8011-557404',
+        'YU WAI LOONG',
+        '',
+        '*===============*',
+        '',
+        '> *Supplier: JOHN TAN*',
+        'PR-JEP-202609-003-JOHN TAN-7.00',
+        'https://drive.google.com/file/d/GHI/view',
+        '',
+        '> Stationery',
+        'PR-JEP-202609-003 - RM 7.00',
+        '',
+        'Total RM 7.00',
+        'Maybank',
+        '112233',
         'JOHN TAN',
         '',
         '*===============*',
