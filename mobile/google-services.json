@@ -12,7 +12,20 @@
           "package_name": "com.jepventures.account"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "642500481343-4r1k71sfqc0ndn8d8hkjfhrf74fmcp0d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jepventures.account",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "642500481343-73uskk70olokrn1l0jdbmghk9ibnlbgg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB_n4YLeW9Sv9jXxBRLngZcUUosuHjqEgc"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "642500481343-73uskk70olokrn1l0jdbmghk9ibnlbgg.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
