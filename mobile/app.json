@@ -28,7 +28,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Allow JEP Claims to take photos of your receipts."
+          "cameraPermission": "Allow JEP Claims to take photos of your receipts.",
+          "microphonePermission": false
         }
       ],
       [
