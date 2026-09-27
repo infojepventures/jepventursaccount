@@ -7,3 +7,4 @@ export * from './status';
 export * from './profile';
 export * from './types';
 export * from './api';
+export * from './ocrRules';

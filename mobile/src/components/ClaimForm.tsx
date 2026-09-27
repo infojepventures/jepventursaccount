@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
-import { formatRM, MAX_ATTACHMENTS, parseAmountToCents } from '@jep/shared';
+import { extractSuggestionFromText, formatRM, MAX_ATTACHMENTS, parseAmountToCents, type AttachmentSuggestion } from '@jep/shared';
 import { applySuggestion } from '../claims/applySuggestion';
+import { extractPdfText } from '../claims/pdfText';
 import { claimSummary } from '../claims/claimSummary';
 import { draftErrors, emptyItem, itemErrors, type ClaimDraft, type DraftItem } from '../claims/draft';
 import { orderByItem, receiptsForItem, unlinkedReceipts } from '../claims/itemReceipts';
@@ -82,32 +83,67 @@ export function ClaimForm(p: {
     updateAttachments((list) => list.map((a) => (a.key === key && a.kind === 'local' ? { ...a, ...patch } : a)));
   const findLocal = (key: string) => attachmentsRef.current.find((x): x is LocalAttachment => x.key === key && x.kind === 'local');
 
-  /** Reads a receipt and overwrites its own item's fields (and the payee) with what it found. */
-  const analyzeAttachment = async (key: string, fileId: string, mimeType: string, uri: string, itemKey: string) => {
+  // Per receipt: 'server' once on-device reading found no text (a scanned PDF), so the server analyses it as
+  // soon as its upload lands; 'done' once it has been read.
+  const analysisOutcome = useRef(new Map<string, 'done' | 'server'>());
+
+  /** Overwrites the receipt's own item's fields (and the payee) with what was read from it. */
+  const applyReceiptSuggestion = (key: string, itemKey: string, suggestion: AttachmentSuggestion) => {
+    const before = draftRef.current;
+    const opts = { payeeEditedByUser: payeeEditedByUser.current };
+    const result = applySuggestion(before, itemKey, suggestion, opts);
+    if (result.draft.bank !== before.bank) payeeHistory.current = recordPayeeChange(payeeHistory.current, key, before.bank);
+    draftRef.current = result.draft;
+    // Re-apply on the latest state (applySuggestion is pure and deterministic) so a keystroke queued since
+    // the last render isn't overwritten.
+    setDraft((d) => applySuggestion(d, itemKey, suggestion, opts).draft);
+    if (result.aiFields.size) setAiFields((prev) => new Set([...prev, ...result.aiFields]));
+    patchAttachment(key, { analyzeStage: undefined, analyzed: true, filledCount: result.aiFields.size });
+  };
+
+  /**
+   * Reads a receipt on the device right after it is picked, in parallel with its upload: ML Kit OCR for photos,
+   * the PDF's text layer for PDFs, then the shared extraction rules. Only a PDF with no text (scanned) waits for
+   * its upload and goes to the server.
+   */
+  const analyzeLocally = async (file: LocalAttachment) => {
+    const { key, uri, mimeType } = file;
+    const itemKey = file.itemKey ?? '';
     const isPdf = mimeType === 'application/pdf';
-    patchAttachment(key, { analyzeStage: isPdf ? 'reading' : 'scanning', analyzeError: undefined, filledCount: undefined });
+    analysisOutcome.current.delete(key);
+    patchAttachment(key, { analyzeStage: 'scanning', analyzeError: undefined, filledCount: undefined });
+    const text = isPdf ? await extractPdfText(uri) : await recognizeText(uri);
+    if (removedKeys.current.has(key)) return; // removed while being read: don't fill the form from it
+    if (text) {
+      analysisOutcome.current.set(key, 'done');
+      applyReceiptSuggestion(key, itemKey, extractSuggestionFromText(text));
+      return;
+    }
+    if (!isPdf) {
+      analysisOutcome.current.set(key, 'done');
+      patchAttachment(key, { analyzeStage: undefined, analyzed: true, filledCount: 0 });
+      return;
+    }
+    analysisOutcome.current.set(key, 'server');
+    patchAttachment(key, { analyzeStage: 'reading' });
+    const uploadedId = findLocal(key)?.uploadedId;
+    if (uploadedId) void analyzeOnServer(key, uploadedId, itemKey);
+  };
+
+  /** Server-side reading of an uploaded PDF (text layer, or Document AI when configured). */
+  const analyzeOnServer = async (key: string, fileId: string, itemKey: string) => {
+    analysisOutcome.current.set(key, 'done');
+    patchAttachment(key, { analyzeStage: 'reading', analyzeError: undefined });
     try {
-      // PDFs are text-extracted server-side; images need on-device OCR text sent along.
-      const text = isPdf ? undefined : (await recognizeText(uri)) ?? undefined;
-      patchAttachment(key, { analyzeStage: 'reading' });
-      const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId, ...(text ? { text } : {}) });
-      if (removedKeys.current.has(key)) return; // removed while being read: don't fill the form from it
-      const before = draftRef.current;
-      const opts = { payeeEditedByUser: payeeEditedByUser.current };
-      const result = applySuggestion(before, itemKey, suggestion, opts);
-      if (result.draft.bank !== before.bank) payeeHistory.current = recordPayeeChange(payeeHistory.current, key, before.bank);
-      draftRef.current = result.draft;
-      // Re-apply on the latest state (applySuggestion is pure and deterministic) so a keystroke queued since
-      // the last render isn't overwritten.
-      setDraft((d) => applySuggestion(d, itemKey, suggestion, opts).draft);
-      if (result.aiFields.size) setAiFields((prev) => new Set([...prev, ...result.aiFields]));
-      patchAttachment(key, { analyzeStage: undefined, analyzed: true, filledCount: result.aiFields.size });
+      const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId });
+      if (removedKeys.current.has(key)) return;
+      applyReceiptSuggestion(key, itemKey, suggestion);
     } catch {
       patchAttachment(key, { analyzeStage: undefined, analyzed: true, analyzeError: "Couldn't read" });
     }
   };
 
-  /** Uploads `files` straight away and analyses each one as soon as its upload finishes. */
+  /** Uploads `files` straight away; a scanned PDF is analysed on the server once its upload lands. */
   const uploadAndAnalyze = async (files: LocalAttachment[]) => {
     const byKey = new Map(files.map((f) => [f.key, f]));
     const onAttachmentUpdate = (key: string, patch: Partial<LocalAttachment>) => {
@@ -117,7 +153,7 @@ export function ClaimForm(p: {
       }
       patchAttachment(key, patch);
       const file = patch.uploadedId ? byKey.get(key) : undefined;
-      if (file) void analyzeAttachment(key, patch.uploadedId!, file.mimeType, file.uri, file.itemKey ?? '');
+      if (file && analysisOutcome.current.get(key) === 'server') void analyzeOnServer(key, patch.uploadedId!, file.itemKey ?? '');
     };
     try {
       await uploadPendingAttachments(api, putFile, p.claimId, files, onAttachmentUpdate);
@@ -140,6 +176,7 @@ export function ClaimForm(p: {
       }
       if (accepted.length === 0) return;
       updateAttachments((a) => [...a, ...accepted]);
+      for (const file of accepted) void analyzeLocally(file);
       await uploadAndAnalyze(accepted);
     } catch (e) {
       Alert.alert('Could not add file', friendlyMessage(e));
@@ -176,8 +213,8 @@ export function ClaimForm(p: {
     if (step === 'upload') {
       patchAttachment(key, { error: undefined, progress: undefined });
       void uploadAndAnalyze([{ ...a, error: undefined }]);
-    } else if (a.uploadedId) {
-      void analyzeAttachment(key, a.uploadedId, a.mimeType, a.uri, a.itemKey ?? '');
+    } else {
+      void analyzeLocally(a);
     }
   };
 
