@@ -5,7 +5,6 @@ import { buildClaimPdf } from '../lib/pdf/buildClaimPdf';
 const bytes = await buildClaimPdf(
   {
     refNo: 'PR-JEP-202609-draft',
-    isDraft: true,
     applicant: { name: '陈大文 Tan Ah Kow', position: 'Operations Executive' },
     date: '2026-09-25',
     items: [
