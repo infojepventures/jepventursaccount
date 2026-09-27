@@ -27,11 +27,11 @@ describe('applySuggestion', () => {
 
   it("overwrites the item's existing values with the newest receipt's, but only the fields it read", () => {
     const { draft: out, aiFields } = applySuggestion(twoItems(), 'i1', { amountCents: 800 }, { payeeEditedByUser: false });
-    expect(out.items[0]).toEqual({ key: 'i1', description: 'Parking', amount: '8.00', reference: 'P-1' });
+    expect(out.items[0]).toMatchObject({ key: 'i1', description: 'Parking', amount: '8.00', reference: 'P-1' });
     expect(aiFields).toEqual(new Set(['item:i1:amount']));
   });
 
-  it('skips the item part when the item was removed meanwhile, but still applies the payee', () => {
+  it('does nothing when the item was removed meanwhile (the payee now belongs to the item)', () => {
     const draft = { ...twoItems(), bank };
     const { draft: out, aiFields } = applySuggestion(
       draft,
@@ -39,24 +39,32 @@ describe('applySuggestion', () => {
       { description: 'Taxi', payee: { accountNumber: '99988877' } },
       { payeeEditedByUser: false },
     );
-    expect(out.items).toEqual(draft.items);
-    expect(out.bank.accountNumber).toBe('99988877');
-    expect(aiFields).toEqual(new Set(['bank:accountNumber']));
+    expect(out).toEqual(draft);
+    expect(aiFields.size).toBe(0);
   });
 
-  it('overwrites payee fields the suggestion provides, keeping others, when not user-edited', () => {
+  it("sets a different supplier as the item's own payee, starting blank so it never mixes with the default bank", () => {
     const draft = emptyDraft(bank);
+    const key = draft.items[0]!.key;
     const { draft: out, aiFields } = applySuggestion(
       draft,
-      draft.items[0]!.key,
+      key,
       { payee: { accountHolder: 'Ah Kow', accountNumber: '99988877' } },
       { payeeEditedByUser: false },
     );
-    expect(out.bank).toEqual({ bankName: 'Maybank', accountHolder: 'Ah Kow', accountNumber: '99988877' });
-    expect(aiFields).toEqual(new Set(['bank:accountHolder', 'bank:accountNumber']));
+    expect(out.bank).toEqual(bank); // the default Pay to is untouched
+    expect(out.items[0]!.payee).toEqual({ bankName: '', accountHolder: 'Ah Kow', accountNumber: '99988877' });
+    expect(aiFields).toEqual(new Set([`item:${key}:payee:accountHolder`, `item:${key}:payee:accountNumber`]));
   });
 
-  it('does not touch payee fields once the user has edited Pay to', () => {
+  it('fills in the missing details when the receipt names the same payee', () => {
+    const draft = emptyDraft(bank);
+    const key = draft.items[0]!.key;
+    const { draft: out } = applySuggestion(draft, key, { payee: { accountHolder: 'tan', accountNumber: '777' } }, { payeeEditedByUser: false });
+    expect(out.items[0]!.payee).toEqual({ bankName: 'Maybank', accountHolder: 'tan', accountNumber: '777' });
+  });
+
+  it("does not touch the item's payee once the user has edited it", () => {
     const draft = emptyDraft(bank);
     const { draft: out, aiFields } = applySuggestion(
       draft,
@@ -64,14 +72,14 @@ describe('applySuggestion', () => {
       { payee: { accountHolder: 'Ah Kow', accountNumber: '99988877' } },
       { payeeEditedByUser: true },
     );
-    expect(out.bank).toEqual(bank);
+    expect(out.items[0]!.payee ?? null).toBeNull();
     expect(aiFields.size).toBe(0);
   });
 
-  it('does not overwrite payee when the suggestion has neither accountHolder nor accountNumber', () => {
+  it('does not set a payee when the suggestion has neither accountHolder nor accountNumber', () => {
     const draft = emptyDraft(bank);
     const { draft: out, aiFields } = applySuggestion(draft, draft.items[0]!.key, { payee: { bankName: 'CIMB' } }, { payeeEditedByUser: false });
-    expect(out.bank).toEqual(bank);
+    expect(out).toEqual(draft);
     expect(aiFields.size).toBe(0);
   });
 

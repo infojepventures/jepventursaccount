@@ -23,14 +23,15 @@ describe('claim draft', () => {
 
   it('reports per-item, bank and attachment errors', () => {
     const d = { ...emptyDraft({ ...bank, accountNumber: '' }), items: [{ key: 'a', description: '', amount: '1.234', reference: '' }] };
-    expect(draftErrors(d, 0)).toEqual([
+    expect(draftErrors(d, [])).toEqual([
       'Item 1: description is required',
       'Item 1: enter an amount like 12.50',
       'Account number is required',
       'Attach 1 to 10 receipts',
     ]);
     const ok = { ...emptyDraft(bank), items: [{ key: 'a', description: 'Parking', amount: '10', reference: '' }] };
-    expect(draftErrors(ok, 1)).toEqual([]);
+    const receipt = { key: 'r', kind: 'local' as const, uri: 'file:///r.jpg', name: 'r.jpg', mimeType: 'image/jpeg' as const, size: 1, itemKey: 'a' };
+    expect(draftErrors(ok, [receipt])).toEqual([]);
     expect(draftToItems(ok)).toEqual([{ description: 'Parking', amountCents: 1000 }]);
   });
 

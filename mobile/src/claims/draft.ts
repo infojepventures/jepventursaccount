@@ -1,24 +1,25 @@
-import {
-  formatCents, MAX_ATTACHMENTS, MIN_ATTACHMENTS, parseAmountToCents, validateBank, validateItems,
-  type BankDetails, type ClaimDoc, type ClaimItem,
-} from '@jep/shared';
-import { newKey, type RemoteAttachment } from './types';
+import { formatCents, parseAmountToCents, validateItems, type BankDetails, type ClaimDoc, type ClaimItem } from '@jep/shared';
+import { splitByPayee, splitErrors } from './split';
+import { newKey, type AnyAttachment, type RemoteAttachment } from './types';
 
 export interface DraftItem {
   key: string;
   description: string;
   amount: string;
   reference: string;
+  /** This item's own payee; null/absent = the claim's default "Pay to" (`ClaimDraft.bank`). Form-only. */
+  payee?: BankDetails | null;
 }
 
 export interface ClaimDraft {
   items: DraftItem[];
+  /** Default "Pay to" for items without their own payee. Items with different payees submit as separate claims. */
   bank: BankDetails;
   saveBankToProfile: boolean;
 }
 
 const EMPTY_BANK: BankDetails = { bankName: '', accountHolder: '', accountNumber: '' };
-export const emptyItem = (): DraftItem => ({ key: newKey(), description: '', amount: '', reference: '' });
+export const emptyItem = (): DraftItem => ({ key: newKey(), description: '', amount: '', reference: '', payee: null });
 
 export function emptyDraft(bank: BankDetails | null): ClaimDraft {
   return { items: [emptyItem()], bank: bank ? { ...bank } : { ...EMPTY_BANK }, saveBankToProfile: false };
@@ -57,17 +58,14 @@ export function itemErrors(item: DraftItem): string[] {
   return errors;
 }
 
-export function draftErrors(d: ClaimDraft, attachmentCount: number): string[] {
+export function draftErrors(d: ClaimDraft, attachments: AnyAttachment[], opts: { resubmit: boolean } = { resubmit: false }): string[] {
   const errors: string[] = [];
   d.items.forEach((item, i) => {
     for (const e of itemErrors(item)) errors.push(`Item ${i + 1}: ${e}`);
   });
   if (d.items.length === 0) errors.push('Add at least one item');
   if (errors.length === 0) errors.push(...validateItems(draftToItems(d)));
-  errors.push(...validateBank(d.bank));
-  if (attachmentCount < MIN_ATTACHMENTS || attachmentCount > MAX_ATTACHMENTS) {
-    errors.push(`Attach ${MIN_ATTACHMENTS} to ${MAX_ATTACHMENTS} receipts`);
-  }
+  errors.push(...splitErrors(splitByPayee(d, attachments), opts));
   return errors;
 }
 
@@ -84,7 +82,9 @@ export function draftToItems(d: ClaimDraft): ClaimItem[] {
 
 /** True once the user has changed anything in the draft (item fields, item count, Pay to, save-to-profile). */
 export function draftIsDirty(initial: ClaimDraft, current: ClaimDraft): boolean {
-  const itemsOf = (d: ClaimDraft) => d.items.map((i) => [i.reference.trim(), i.description.trim(), i.amount.trim()].join('\u0000'));
+  const payeeOf = (i: DraftItem) => (i.payee ? [i.payee.bankName, i.payee.accountHolder, i.payee.accountNumber].join('\u0001') : '');
+  const itemsOf = (d: ClaimDraft) =>
+    d.items.map((i) => [i.reference.trim(), i.description.trim(), i.amount.trim(), payeeOf(i)].join('\u0000'));
   const a = itemsOf(initial);
   const b = itemsOf(current);
   if (a.length !== b.length || a.some((v, i) => v !== b[i])) return true;

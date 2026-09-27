@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
-import { extractSuggestionFromText, formatRM, MAX_ATTACHMENTS, parseAmountToCents, type AttachmentSuggestion } from '@jep/shared';
+import {
+  extractSuggestionFromText, formatRM, MAX_ATTACHMENTS, parseAmountToCents, validateBank, type AttachmentSuggestion, type BankDetails,
+} from '@jep/shared';
 import { applySuggestion } from '../claims/applySuggestion';
 import { extractPdfText } from '../claims/pdfText';
 import { claimSummary } from '../claims/claimSummary';
@@ -10,10 +12,11 @@ import { recordPayeeChange, removePayeeSources, type PayeeHistory } from '../cla
 import { recognizeText } from '../claims/ocr';
 import { pickFromCamera, pickFromLibrary, pickPdfs } from '../claims/pickers';
 import { putFile } from '../claims/putFile';
-import { runSubmitFlow, uploadPendingAttachments } from '../claims/submitFlow';
+import { runSplitSubmit, uploadPendingAttachments, type SubmittedGroup } from '../claims/submitFlow';
 import type { AnyAttachment, LocalAttachment } from '../claims/types';
 import { friendlyMessage } from '../lib/api';
 import { api } from '../lib/apiInstance';
+import { newClaimId } from '../lib/firebase';
 import { Button } from '../ui/Button';
 import { Screen } from '../ui/Screen';
 import { Section } from '../ui/Section';
@@ -21,6 +24,7 @@ import { TextField } from '../ui/TextField';
 import { colors, space } from '../ui/theme';
 import { AttachmentList } from './AttachmentList';
 import { ClaimSummaryCard } from './ClaimSummaryCard';
+import { ItemPayee } from './ItemPayee';
 import { ItemTabs, type ItemTab } from './ItemTabs';
 
 export function ClaimForm(p: {
@@ -30,7 +34,8 @@ export function ClaimForm(p: {
   initialAttachments: AnyAttachment[];
   showSaveBank: boolean;
   submitLabel: string;
-  onSubmitted: (claimId: string) => void;
+  /** One id, or several when items paying different people were submitted as separate claims. */
+  onSubmitted: (claimIds: string[]) => void;
   /** Shows a discard button while the form has changes; called after they (and new uploads) are thrown away. */
   onDiscarded?: () => void;
   discardLabel?: string;
@@ -41,15 +46,16 @@ export function ClaimForm(p: {
   const [showErrors, setShowErrors] = useState(false);
   const [aiFields, setAiFields] = useState<Set<string>>(new Set());
   const [activeKey, setActiveKey] = useState(p.initialDraft.items[0]?.key ?? '');
-  const payeeEditedByUser = useRef(false);
+  // Items whose payee the user edited (or reset): a receipt read later never overwrites that.
+  const payeeEdited = useRef(new Set<string>());
   // Latest draft for async OCR callbacks: applySuggestion must run outside a setState updater so its
   // AI-filled field keys are available synchronously (React may defer updaters).
   const draftRef = useRef(draft);
   draftRef.current = draft;
   // Receipts removed from the form. An upload still in flight when removed is discarded once it lands.
   const removedKeys = useRef(new Set<string>());
-  // Receipts that overwrote Pay to, so removing one can put back the details from before it.
-  const payeeHistory = useRef<PayeeHistory>([]);
+  // Per item: receipts that overwrote its payee, so removing one can put back what was there before it.
+  const payeeHistories = useRef(new Map<string, PayeeHistory>());
   // Latest attachments, for callbacks that outlive a render (upload/OCR completions, the remove-item dialog).
   // Every change goes through updateAttachments so this never lags behind state.
   const attachmentsRef = useRef(attachments);
@@ -58,7 +64,7 @@ export function ClaimForm(p: {
     setAttachments(attachmentsRef.current);
   };
 
-  const errors = draftErrors(draft, attachments.length);
+  const errors = draftErrors(draft, attachments, { resubmit: p.resubmit });
   const remaining = MAX_ATTACHMENTS - attachments.length;
   const activeIndex = Math.max(0, draft.items.findIndex((i) => i.key === activeKey));
   const active = draft.items[activeIndex]!;
@@ -77,9 +83,22 @@ export function ClaimForm(p: {
     clearAiFields(Object.keys(patch).map((field) => `item:${key}:${field}`));
   };
   const setBank = (patch: Partial<ClaimDraft['bank']>) => {
-    payeeEditedByUser.current = true;
     setDraft((d) => ({ ...d, bank: { ...d.bank, ...patch } }));
-    clearAiFields(Object.keys(patch).map((field) => `bank:${field}`));
+  };
+  const payeeBadges = (itemKey: string) => ['bankName', 'accountHolder', 'accountNumber'].map((f) => `item:${itemKey}:payee:${f}`);
+  /** Gives an item its own payee (a copy of the default to edit) or edits it; the user's edits always win. */
+  const setItemPayee = (itemKey: string, patch: Partial<BankDetails>) => {
+    payeeEdited.current.add(itemKey);
+    setDraft((d) => ({
+      ...d,
+      items: d.items.map((i) => (i.key === itemKey ? { ...i, payee: { ...(i.payee ?? d.bank), ...patch } } : i)),
+    }));
+    clearAiFields(Object.keys(patch).map((field) => `item:${itemKey}:payee:${field}`));
+  };
+  const useDefaultPayee = (itemKey: string) => {
+    payeeEdited.current.add(itemKey);
+    setDraft((d) => ({ ...d, items: d.items.map((i) => (i.key === itemKey ? { ...i, payee: null } : i)) }));
+    clearAiFields(payeeBadges(itemKey));
   };
 
   const patchAttachment = (key: string, patch: Partial<LocalAttachment>) =>
@@ -93,9 +112,13 @@ export function ClaimForm(p: {
   /** Overwrites the receipt's own item's fields (and the payee) with what was read from it. */
   const applyReceiptSuggestion = (key: string, itemKey: string, suggestion: AttachmentSuggestion) => {
     const before = draftRef.current;
-    const opts = { payeeEditedByUser: payeeEditedByUser.current };
+    const opts = { payeeEditedByUser: payeeEdited.current.has(itemKey) };
     const result = applySuggestion(before, itemKey, suggestion, opts);
-    if (result.draft.bank !== before.bank) payeeHistory.current = recordPayeeChange(payeeHistory.current, key, before.bank);
+    const payeeBefore = before.items.find((i) => i.key === itemKey)?.payee ?? null;
+    const payeeAfter = result.draft.items.find((i) => i.key === itemKey)?.payee ?? null;
+    if (payeeAfter !== payeeBefore) {
+      payeeHistories.current.set(itemKey, recordPayeeChange(payeeHistories.current.get(itemKey) ?? [], key, payeeBefore));
+    }
     draftRef.current = result.draft;
     // Re-apply on the latest state (applySuggestion is pure and deterministic) so a keystroke queued since
     // the last render isn't overwritten.
@@ -197,17 +220,18 @@ export function ClaimForm(p: {
     updateAttachments((list) => list.filter((x) => x.key !== key));
     // Saved attachments of a claim being resubmitted stay until the resubmission replaces them.
     if (a?.kind === 'local' && a.uploadedId) discardFromDrive([a.uploadedId]);
-    restorePayee(key);
+    if (a?.itemKey) restorePayee(key, a.itemKey);
   };
 
-  /** If the removed receipt's details are what Pay to shows, put back what was there before it. */
-  const restorePayee = (key: string) => {
-    const { history, restore } = removePayeeSources(payeeHistory.current, [key]);
-    payeeHistory.current = history;
-    if (!restore || payeeEditedByUser.current) return; // never undo the user's own typing
-    draftRef.current = { ...draftRef.current, bank: restore };
-    setDraft((d) => ({ ...d, bank: restore }));
-    if (history.length === 0) clearAiFields(['bank:bankName', 'bank:accountHolder', 'bank:accountNumber']);
+  /** If the removed receipt's details are what the item's Pay to shows, put back what was there before it. */
+  const restorePayee = (key: string, itemKey: string) => {
+    const { history, restore } = removePayeeSources(payeeHistories.current.get(itemKey) ?? [], [key]);
+    payeeHistories.current.set(itemKey, history);
+    if (!restore || payeeEdited.current.has(itemKey)) return; // never undo the user's own typing
+    const items = draftRef.current.items.map((i) => (i.key === itemKey ? { ...i, payee: restore.value } : i));
+    draftRef.current = { ...draftRef.current, items };
+    setDraft((d) => ({ ...d, items: d.items.map((i) => (i.key === itemKey ? { ...i, payee: restore.value } : i)) }));
+    if (history.length === 0) clearAiFields(payeeBadges(itemKey));
   };
 
   const retryAttachment = (key: string, step: 'upload' | 'analyze') => {
@@ -288,13 +312,36 @@ export function ClaimForm(p: {
       return;
     }
     setSubmitting(true);
+    const done: string[] = [];
+    // A split-off claim is final: take its items and receipts out of the form (so a retry after a later failure
+    // only sends the rest) and drop the originals it re-uploaded from this form's upload folder.
+    const onGroupSubmitted = (g: SubmittedGroup) => {
+      done.push(g.claimId);
+      if (g.claimId === p.claimId) return;
+      if (g.movedUploadIds.length) discardFromDrive(g.movedUploadIds);
+      for (const k of g.attachmentKeys) removedKeys.current.add(k);
+      const gone = new Set(g.itemKeys);
+      updateAttachments((list) => list.filter((a) => !g.attachmentKeys.includes(a.key)));
+      draftRef.current = { ...draftRef.current, items: draftRef.current.items.filter((i) => !gone.has(i.key)) };
+      setDraft((d) => ({ ...d, items: d.items.filter((i) => !gone.has(i.key)) }));
+      const next = draftRef.current.items[0];
+      if (next) setActiveKey(next.key);
+    };
     try {
       // Item by item, so the merged PDF's receipts follow the items.
       const ordered = orderByItem(attachmentsRef.current, draft.items);
-      await runSubmitFlow({ api, putFile }, { claimId: p.claimId, draft, attachments: ordered, resubmit: p.resubmit }, patchAttachment);
-      p.onSubmitted(p.claimId);
+      const ids = await runSplitSubmit(
+        { api, putFile, newClaimId },
+        { claimId: p.claimId, draft, attachments: ordered, resubmit: p.resubmit },
+        patchAttachment,
+        onGroupSubmitted,
+      );
+      p.onSubmitted(ids);
     } catch (e) {
-      Alert.alert('Not submitted', friendlyMessage(e));
+      const partial = done.length
+        ? `${done.length} claim${done.length === 1 ? ' was' : 's were'} submitted; the rest are still here. `
+        : '';
+      Alert.alert('Not submitted', `${partial}${friendlyMessage(e)}`);
     } finally {
       setSubmitting(false);
     }
@@ -308,7 +355,7 @@ export function ClaimForm(p: {
       amountLabel: cents !== null && cents > 0 ? formatRM(cents) : '—',
       receiptCount: receipts.length,
       busy: receipts.some((r) => r.kind === 'local' && !r.error && (!r.uploadedId || r.analyzeStage !== undefined)),
-      hasError: showErrors && itemErrors(item).length > 0,
+      hasError: showErrors && (itemErrors(item).length > 0 || (!!item.payee && validateBank(item.payee).length > 0)),
     };
   });
   const activeReceipts = receiptsForItem(attachments, active.key);
@@ -349,6 +396,16 @@ export function ClaimForm(p: {
           {activeErrors.length ? <Text style={styles.errors}>{activeErrors.join('\n')}</Text> : null}
         </View>
 
+        <ItemPayee
+          payee={active.payee ?? draft.bank}
+          own={!!active.payee}
+          badge={(field) => (aiFields.has(`item:${active.key}:payee:${field}`) ? 'AI' : undefined)}
+          onChange={(patch) => setItemPayee(active.key, patch)}
+          onUseOwn={() => setItemPayee(active.key, {})}
+          onUseDefault={() => useDefaultPayee(active.key)}
+          disabled={submitting}
+        />
+
         <View style={styles.receipts}>
           <View style={styles.receiptsHead}>
             <Text style={styles.subTitle}>Receipts for item {activeIndex + 1}</Text>
@@ -388,26 +445,22 @@ export function ClaimForm(p: {
         </Section>
       ) : null}
 
-      <Section title="Pay to">
-        <TextField
-          label="Bank"
-          value={draft.bank.bankName}
-          onChangeText={(t) => setBank({ bankName: t })}
-          badge={aiFields.has('bank:bankName') ? 'AI' : undefined}
-        />
+      <Section title="Default pay to">
+        <Text style={styles.hint}>
+          Used by every item without its own payee. Items paying different people are submitted as separate claims.
+        </Text>
+        <TextField label="Bank" value={draft.bank.bankName} onChangeText={(t) => setBank({ bankName: t })} />
         <TextField
           label="Account holder"
           value={draft.bank.accountHolder}
           onChangeText={(t) => setBank({ accountHolder: t })}
           autoCapitalize="words"
-          badge={aiFields.has('bank:accountHolder') ? 'AI' : undefined}
         />
         <TextField
           label="Account number"
           value={draft.bank.accountNumber}
           onChangeText={(t) => setBank({ accountNumber: t })}
           keyboardType="number-pad"
-          badge={aiFields.has('bank:accountNumber') ? 'AI' : undefined}
         />
         {p.showSaveBank ? (
           <View style={styles.switchRow}>

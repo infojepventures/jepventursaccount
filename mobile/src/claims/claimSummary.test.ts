@@ -21,9 +21,26 @@ describe('claimSummary', () => {
       payee: 'ULTRA CLEANING SDN BHD',
       busyReceipts: 0,
       incompleteItems: [],
+      claims: [{ payee: 'ULTRA CLEANING SDN BHD', totalCents: 243955, receiptCount: 2 }],
       issues: [],
       ready: true,
     });
+  });
+
+  it('lists the claims a multi-payee draft will be split into, and a split claim missing its receipt', () => {
+    const other = { bankName: 'Public Bank', accountHolder: 'YU WAI LOONG', accountNumber: '6803149225' };
+    const d = draft([
+      { key: 'i1', reference: '', description: 'Spa', amount: '439.55', payee: other },
+      { key: 'i2', reference: '', description: 'Cleaning', amount: '2000' },
+    ]);
+    const s = claimSummary(d, [done('b', 'i2')]);
+    expect(s.claims).toEqual([
+      { payee: 'YU WAI LOONG', totalCents: 43955, receiptCount: 0 },
+      { payee: 'ULTRA CLEANING SDN BHD', totalCents: 200000, receiptCount: 1 },
+    ]);
+    expect(s.payee).toBe('2 payees');
+    expect(s.issues).toEqual(['Add a receipt for YU WAI LOONG']);
+    expect(s.ready).toBe(false);
   });
 
   it('lists incomplete items (with their index and key), missing receipts and unfinished Pay to', () => {
