@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { getClaim } from '../../lib/firestore';
 import { generatePdf } from '../../lib/services/generatePdf';
 import { reviewClaim } from '../../lib/services/reviewClaim';
+import { extractText } from '../pdfText';
 import { jpgFile, makeTestDeps, pdfBytes, resetEmulators, seedActor, seedCounter, submitNewClaim } from './helpers';
 
 beforeEach(resetEmulators);
@@ -78,6 +79,17 @@ describe('generatePdf', () => {
     const { claimId: second } = await submitNewClaim(t, alice);
     expect(await generatePdf(t.deps, second, t.triggered[1]!.requestId)).toBe('done');
     expect((await getClaim(t.deps.db, second))!.pdf.shortUrl).toBeNull();
+  });
+
+  it('prints the ref number without its status suffix on the PDF, while the file name keeps it', async () => {
+    const { t, alice } = await setup();
+    const { claimId } = await submitNewClaim(t, alice);
+    expect(await generatePdf(t.deps, claimId, t.triggered[0]!.requestId)).toBe('done');
+    const c = (await getClaim(t.deps.db, claimId))!;
+    expect(c.pdf.fileName).toBe('PR-JEP-202609-0001-Draft-Tan Ah Kow-150.00.pdf');
+    const text = await extractText(t.drive.files.get(c.pdf.driveFileId!)!.data, 1);
+    expect(text).toContain('REF: PR-JEP-202609-0001');
+    expect(text).not.toContain('0001-Draft');
   });
 
   it('skips stale requests before doing any work', async () => {

@@ -33,6 +33,14 @@ export function refBaseOf(refNo: string): string | null {
   return m ? m[1]! : null;
 }
 
+/**
+ * The ref no. as shown in the app and on the PDF: the number without its status suffix. The suffix stays in
+ * `refNo` itself, which names the PDF, its Drive folder and the Sheet row.
+ */
+export function displayRefNo(claim: { refNo: string; refBase?: string }): string {
+  return claim.refBase || refBaseOf(claim.refNo) || claim.refNo;
+}
+
 export function refNoYear(refNo: string): string {
   const m = /^PR-JEP-(\d{4})\d{2}-/.exec(refNo);
   if (!m || !m[1]) throw new Error(`Invalid refNo ${refNo}`);

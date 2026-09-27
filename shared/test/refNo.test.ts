@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { refBaseFor, refBaseOf, refNoFor, refNoYear } from '../src/refNo';
+import { displayRefNo, refBaseFor, refBaseOf, refNoFor, refNoYear } from '../src/refNo';
 
 describe('refNo', () => {
   it('builds the base from the submission month (Malaysia time) and a 4-digit global sequence', () => {
@@ -30,5 +30,12 @@ describe('refNo', () => {
     expect(refNoYear('PR-JEP-202610-0006-Approved')).toBe('2026');
     expect(refNoYear('PR-JEP-202701-draft')).toBe('2027');
     expect(() => refNoYear('nope')).toThrow();
+  });
+
+  it('shows the number without the status suffix in the app and on the PDF', () => {
+    expect(displayRefNo({ refNo: 'PR-JEP-202609-0005-Approved', refBase: 'PR-JEP-202609-0005' })).toBe('PR-JEP-202609-0005');
+    expect(displayRefNo({ refNo: 'PR-JEP-202609-0005-Paid' })).toBe('PR-JEP-202609-0005');
+    expect(displayRefNo({ refNo: 'PR-JEP-202609-draft' })).toBe('PR-JEP-202609-draft'); // older formats as they are
+    expect(displayRefNo({ refNo: 'PR-JEP-202609-001' })).toBe('PR-JEP-202609-001');
   });
 });

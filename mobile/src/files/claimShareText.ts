@@ -1,4 +1,4 @@
-import { claimPdfLink, formatRM } from '@jep/shared';
+import { claimPdfLink, displayRefNo, formatRM } from '@jep/shared';
 
 export interface WhatsAppClaimTextInput {
   refNo: string;
@@ -9,8 +9,6 @@ export interface WhatsAppClaimTextInput {
   payment: { bankName: string; accountHolder: string; accountNumber: string };
   pdf: { driveFileId: string | null; fileName: string | null; shortUrl?: string | null };
 }
-
-const STATUS_SUFFIX = /-(?:Draft|Approved|Rejected|Paid|Cancelled)$/;
 
 /** Collapses newlines/whitespace runs inside a value into single spaces, then trims. */
 function clean(value: string): string {
@@ -42,7 +40,7 @@ function buildGroupText(claims: WhatsAppClaimTextInput[]): string {
 
   claims.forEach((claim, ci) => {
     // The number itself, without the status suffix (Draft/Approved/...), stands in for a missing Doc No.
-    const refNo = clean(claim.refBase ?? '') || clean(claim.refNo).replace(STATUS_SUFFIX, '');
+    const refNo = clean(displayRefNo(claim));
     if (claim.pdf.fileName) lines.push(clean(claim.pdf.fileName).replace(/\.pdf$/i, ''));
     const link = claimPdfLink(claim.pdf);
     if (link) lines.push(link);

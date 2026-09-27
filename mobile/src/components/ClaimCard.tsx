@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { formatRM, formatYmd } from '@jep/shared';
+import { displayRefNo, formatRM, formatYmd } from '@jep/shared';
 import type { ClaimRow } from '../data/useClaims';
 import { StatusBadge } from '../ui/StatusBadge';
 import { colors, radius, space } from '../ui/theme';
@@ -49,7 +49,7 @@ export function ClaimCard({
               color={disabled ? colors.border : selected ? colors.primary : colors.muted}
             />
           ) : null}
-          <Text style={styles.ref}>{claim.refNo}</Text>
+          <Text style={styles.ref}>{displayRefNo(claim)}</Text>
         </View>
         <StatusBadge status={claim.status} />
       </View>

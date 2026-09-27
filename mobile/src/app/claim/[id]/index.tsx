@@ -1,7 +1,7 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
-import { allowedActions, formatRM, formatYmd, formatYmdHms, isValidYmd, PDF_STUCK_AFTER_MS } from '@jep/shared';
+import { allowedActions, displayRefNo, formatRM, formatYmd, formatYmdHms, isValidYmd, PDF_STUCK_AFTER_MS } from '@jep/shared';
 import { useAuth } from '../../../auth/AuthProvider';
 import { remoteAttachments } from '../../../claims/draft';
 import { AttachmentList } from '../../../components/AttachmentList';
@@ -56,7 +56,7 @@ export default function ClaimDetailScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: claim.refNo }} />
+      <Stack.Screen options={{ title: displayRefNo(claim) }} />
       <Screen>
         <View style={styles.header}>
           <StatusBadge status={claim.status} />
