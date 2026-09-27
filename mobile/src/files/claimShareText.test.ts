@@ -19,11 +19,11 @@ describe('buildWhatsAppClaimText', () => {
         'PR-JEP-202609-001-YU WAI LOONG-30.00',
         'https://drive.google.com/file/d/ABC/view',
         '',
-        '> Parkinh',
-        'PR-JEP-202609-001 - RM 10.00',
+        '> PR-JEP-202609-001',
+        'Parkinh - RM 10.00',
         '',
-        '> Food',
-        'PR-JEP-202609-001 - RM 20.00',
+        '> PR-JEP-202609-001',
+        'Food - RM 20.00',
         '',
         'Total RM 30.00',
         'Public Bank',
@@ -48,11 +48,11 @@ describe('buildWhatsAppClaimText', () => {
       [
         '> *Supplier: YU WAI LOONG*',
         '',
-        '> Parkinh',
-        'PR-JEP-202609-001 - RM 10.00',
+        '> PR-JEP-202609-001',
+        'Parkinh - RM 10.00',
         '',
-        '> Food',
-        'PR-JEP-202609-001 - RM 20.00',
+        '> PR-JEP-202609-001',
+        'Food - RM 20.00',
         '',
         'Total RM 30.00',
         'Public Bank',
@@ -78,8 +78,8 @@ describe('buildWhatsAppClaimText', () => {
         'PR-JEP-202609-002-JOHN TAN-5.00',
         'https://drive.google.com/file/d/XYZ/view',
         '',
-        '> Taxi ride home',
-        'PR-JEP-202609-002 - RM 5.00',
+        '> PR-JEP-202609-002',
+        'Taxi ride home - RM 5.00',
         '',
         'Total RM 5.00',
         'Maybank',
@@ -92,8 +92,16 @@ describe('buildWhatsAppClaimText', () => {
   });
 });
 
+describe('buildWhatsAppClaimText item lines', () => {
+  it("falls back to the payee's name when an item has no description", () => {
+    const claim = { ...baseClaim, items: [{ description: '  ', amountCents: 3000, reference: 'INV-9' }] };
+    const text = buildWhatsAppClaimText(claim);
+    expect(text).toContain(['> INV-9', 'YU WAI LOONG - RM 30.00'].join('\n'));
+  });
+});
+
 describe('buildWhatsAppClaimText with a per-item reference', () => {
-  it('uses the reference in place of the ref no. when present, and keeps ref no. for items without one', () => {
+  it('quotes the Doc No. when present, and the claim ref no. for items without one', () => {
     const claim = {
       ...baseClaim,
       items: [
@@ -107,11 +115,11 @@ describe('buildWhatsAppClaimText with a per-item reference', () => {
         'PR-JEP-202609-001-YU WAI LOONG-30.00',
         'https://drive.google.com/file/d/ABC/view',
         '',
-        '> Parkinh',
-        'ICS-000024 - RM 10.00',
+        '> ICS-000024',
+        'Parkinh - RM 10.00',
         '',
-        '> Food',
-        'PR-JEP-202609-001 - RM 20.00',
+        '> PR-JEP-202609-001',
+        'Food - RM 20.00',
         '',
         'Total RM 30.00',
         'Public Bank',
@@ -161,18 +169,18 @@ describe('buildWhatsAppBatchText', () => {
         'PR-JEP-202609-001-YU WAI LOONG-30.00',
         'https://drive.google.com/file/d/ABC/view',
         '',
-        '> Parking',
-        'PR-JEP-202609-001 - RM 10.00',
+        '> PR-JEP-202609-001',
+        'Parking - RM 10.00',
         '',
-        '> Food',
-        'PR-JEP-202609-001 - RM 20.00',
+        '> PR-JEP-202609-001',
+        'Food - RM 20.00',
         '',
         '',
         'PR-JEP-202609-002-YU WAI LOONG-15.00',
         'https://drive.google.com/file/d/DEF/view',
         '',
-        '> Toll',
-        'PR-JEP-202609-002 - RM 15.00',
+        '> PR-JEP-202609-002',
+        'Toll - RM 15.00',
         '',
         'Total RM 45.00',
         'Public Bank',
@@ -185,8 +193,8 @@ describe('buildWhatsAppBatchText', () => {
         'PR-JEP-202609-003-JOHN TAN-7.00',
         'https://drive.google.com/file/d/GHI/view',
         '',
-        '> Stationery',
-        'PR-JEP-202609-003 - RM 7.00',
+        '> PR-JEP-202609-003',
+        'Stationery - RM 7.00',
         '',
         'Total RM 7.00',
         'Maybank',
