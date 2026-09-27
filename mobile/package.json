@@ -8,7 +8,8 @@
     "android": "expo run:android",
     "test": "jest",
     "typecheck": "tsc --noEmit",
-    "update:prod": "npx --yes eas-cli@latest update --branch production --environment production --platform android"
+    "update:prod": "npx --yes eas-cli@latest update --branch production --environment production --platform android",
+    "release:android": "npx --yes eas-cli@latest build -p android --profile production --non-interactive --wait && npm run publish:apk -w @jep/netlify"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
