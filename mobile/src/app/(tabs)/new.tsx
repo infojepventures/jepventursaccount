@@ -26,6 +26,8 @@ export default function NewClaimTab() {
         setRound((r) => r + 1);
         router.push({ pathname: '/claim/[id]', params: { id } });
       }}
+      // A fresh claim id and an empty form; the old one's leftover (empty) upload folder is swept up daily.
+      onDiscarded={() => setRound((r) => r + 1)}
     />
   );
 }

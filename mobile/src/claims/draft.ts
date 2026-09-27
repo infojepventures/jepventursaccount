@@ -81,3 +81,13 @@ export function draftToItems(d: ClaimDraft): ClaimItem[] {
     };
   });
 }
+
+/** True once the user has changed anything in the draft (item fields, item count, Pay to, save-to-profile). */
+export function draftIsDirty(initial: ClaimDraft, current: ClaimDraft): boolean {
+  const itemsOf = (d: ClaimDraft) => d.items.map((i) => [i.reference.trim(), i.description.trim(), i.amount.trim()].join('\u0000'));
+  const a = itemsOf(initial);
+  const b = itemsOf(current);
+  if (a.length !== b.length || a.some((v, i) => v !== b[i])) return true;
+  const bankOf = (d: ClaimDraft) => [d.bank.bankName, d.bank.accountHolder, d.bank.accountNumber].map((s) => s.trim()).join('\u0000');
+  return bankOf(initial) !== bankOf(current) || initial.saveBankToProfile !== current.saveBankToProfile;
+}

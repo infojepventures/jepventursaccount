@@ -4,7 +4,7 @@ import { extractSuggestionFromText, formatRM, MAX_ATTACHMENTS, parseAmountToCent
 import { applySuggestion } from '../claims/applySuggestion';
 import { extractPdfText } from '../claims/pdfText';
 import { claimSummary } from '../claims/claimSummary';
-import { draftErrors, emptyItem, itemErrors, type ClaimDraft, type DraftItem } from '../claims/draft';
+import { draftErrors, draftIsDirty, emptyItem, itemErrors, type ClaimDraft, type DraftItem } from '../claims/draft';
 import { orderByItem, receiptsForItem, unlinkedReceipts } from '../claims/itemReceipts';
 import { recordPayeeChange, removePayeeSources, type PayeeHistory } from '../claims/payeeHistory';
 import { recognizeText } from '../claims/ocr';
@@ -31,6 +31,9 @@ export function ClaimForm(p: {
   showSaveBank: boolean;
   submitLabel: string;
   onSubmitted: (claimId: string) => void;
+  /** Shows a discard button while the form has changes; called after they (and new uploads) are thrown away. */
+  onDiscarded?: () => void;
+  discardLabel?: string;
 }) {
   const [draft, setDraft] = useState<ClaimDraft>(p.initialDraft);
   const [attachments, setAttachments] = useState<AnyAttachment[]>(p.initialAttachments);
@@ -246,6 +249,31 @@ export function ClaimForm(p: {
     );
   };
 
+  const hasNewReceipts = attachments.some((a) => a.kind === 'local');
+  const canDiscard = !!p.onDiscarded && (hasNewReceipts || draftIsDirty(p.initialDraft, draft));
+
+  /** Throws the draft away: receipts added in this form are removed from Drive (in-flight ones once they land). */
+  const discard = () => {
+    const added = attachmentsRef.current.filter((a): a is LocalAttachment => a.kind === 'local');
+    Alert.alert(
+      p.resubmit ? 'Discard your changes?' : 'Discard this claim?',
+      added.length ? `The ${added.length} receipt${added.length === 1 ? '' : 's'} you added will be deleted.` : undefined,
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            for (const a of added) removedKeys.current.add(a.key);
+            const uploaded = added.map((a) => a.uploadedId).filter((id): id is string => !!id);
+            if (uploaded.length) discardFromDrive(uploaded);
+            p.onDiscarded?.();
+          },
+        },
+      ],
+    );
+  };
+
   const submit = async () => {
     setShowErrors(true);
     if (errors.length) {
@@ -391,6 +419,9 @@ export function ClaimForm(p: {
 
       {showErrors && errors.length ? <Text style={styles.errors}>{errors.join('\n')}</Text> : null}
       <Button title={p.submitLabel} onPress={submit} loading={submitting} />
+      {canDiscard && !submitting ? (
+        <Button title={p.discardLabel ?? 'Discard draft'} variant="ghost" icon="trash-outline" onPress={discard} />
+      ) : null}
     </Screen>
   );
 }

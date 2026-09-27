@@ -1,5 +1,5 @@
 import type { ClaimDoc } from '@jep/shared';
-import { draftErrors, draftFromClaim, draftToItems, draftTotalCents, emptyDraft, remoteAttachments } from './draft';
+import { draftErrors, draftFromClaim, draftIsDirty, draftToItems, draftTotalCents, emptyDraft, emptyItem, remoteAttachments } from './draft';
 
 const bank = { bankName: 'Maybank', accountHolder: 'Tan Ah Kow', accountNumber: '1234 5678' };
 
@@ -57,5 +57,22 @@ describe('claim draft', () => {
     expect(remoteAttachments(claim)).toEqual([
       expect.objectContaining({ kind: 'remote', driveFileId: 'f1', name: 'r.jpg', mimeType: 'image/jpeg', size: 10 }),
     ]);
+  });
+});
+
+describe('draftIsDirty', () => {
+  const bank = { bankName: 'Public Bank', accountHolder: 'YU WAI LOONG', accountNumber: '6803149225' };
+  const initial = emptyDraft(bank);
+
+  it('is clean for an untouched draft, even with new item keys or surrounding spaces', () => {
+    expect(draftIsDirty(initial, initial)).toBe(false);
+    expect(draftIsDirty(initial, { ...initial, items: [{ ...initial.items[0]!, key: 'other', description: '  ' }] })).toBe(false);
+  });
+
+  it('is dirty after editing an item, adding an item, changing Pay to or the save switch', () => {
+    expect(draftIsDirty(initial, { ...initial, items: [{ ...initial.items[0]!, amount: '5' }] })).toBe(true);
+    expect(draftIsDirty(initial, { ...initial, items: [...initial.items, emptyItem()] })).toBe(true);
+    expect(draftIsDirty(initial, { ...initial, bank: { ...bank, accountNumber: '1' } })).toBe(true);
+    expect(draftIsDirty(initial, { ...initial, saveBankToProfile: true })).toBe(true);
   });
 });

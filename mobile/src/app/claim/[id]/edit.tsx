@@ -32,6 +32,8 @@ export default function EditClaimScreen() {
       showSaveBank={false}
       submitLabel="Resubmit claim"
       onSubmitted={() => router.back()}
+      onDiscarded={() => router.back()}
+      discardLabel="Discard changes"
     />
   );
 }
