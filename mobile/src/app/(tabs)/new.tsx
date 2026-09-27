@@ -21,7 +21,6 @@ export default function NewClaimTab() {
       resubmit={false}
       initialDraft={initialDraft}
       initialAttachments={[]}
-      showSaveBank
       submitLabel="Submit claim"
       onSubmitted={(ids) => {
         setRound((r) => r + 1);

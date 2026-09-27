@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import {
   extractSuggestionFromText, formatRM, MAX_ATTACHMENTS, parseAmountToCents, validateBank, type AttachmentSuggestion, type BankDetails,
 } from '@jep/shared';
@@ -8,6 +8,7 @@ import { extractPdfText } from '../claims/pdfText';
 import { claimSummary } from '../claims/claimSummary';
 import { draftErrors, draftIsDirty, emptyItem, itemErrors, type ClaimDraft, type DraftItem } from '../claims/draft';
 import { orderByItem, receiptsForItem, unlinkedReceipts } from '../claims/itemReceipts';
+import { payeeChoices } from '../claims/split';
 import { recordPayeeChange, removePayeeSources, type PayeeHistory } from '../claims/payeeHistory';
 import { recognizeText } from '../claims/ocr';
 import { pickFromCamera, pickFromLibrary, pickPdfs } from '../claims/pickers';
@@ -32,7 +33,6 @@ export function ClaimForm(p: {
   resubmit: boolean;
   initialDraft: ClaimDraft;
   initialAttachments: AnyAttachment[];
-  showSaveBank: boolean;
   submitLabel: string;
   /** One id, or several when items paying different people were submitted as separate claims. */
   onSubmitted: (claimIds: string[]) => void;
@@ -82,9 +82,6 @@ export function ClaimForm(p: {
     setDraft((d) => ({ ...d, items: d.items.map((i) => (i.key === key ? { ...i, ...patch } : i)) }));
     clearAiFields(Object.keys(patch).map((field) => `item:${key}:${field}`));
   };
-  const setBank = (patch: Partial<ClaimDraft['bank']>) => {
-    setDraft((d) => ({ ...d, bank: { ...d.bank, ...patch } }));
-  };
   const payeeBadges = (itemKey: string) => ['bankName', 'accountHolder', 'accountNumber'].map((f) => `item:${itemKey}:payee:${f}`);
   /** Gives an item its own payee (a copy of the default to edit) or edits it; the user's edits always win. */
   const setItemPayee = (itemKey: string, patch: Partial<BankDetails>) => {
@@ -94,6 +91,22 @@ export function ClaimForm(p: {
       items: d.items.map((i) => (i.key === itemKey ? { ...i, payee: { ...(i.payee ?? d.bank), ...patch } } : i)),
     }));
     clearAiFields(Object.keys(patch).map((field) => `item:${itemKey}:payee:${field}`));
+  };
+  /** One-tap choice of a payee another item already uses (or the default). */
+  const pickPayee = (itemKey: string, payee: BankDetails, isDefault: boolean) => {
+    if (isDefault) return useDefaultPayee(itemKey);
+    payeeEdited.current.add(itemKey);
+    setDraft((d) => ({ ...d, items: d.items.map((i) => (i.key === itemKey ? { ...i, payee: { ...payee } } : i)) }));
+    clearAiFields(payeeBadges(itemKey));
+  };
+  /** Every item pays what this item pays (its own payee, or the default). */
+  const applyPayeeToAll = (itemKey: string) => {
+    const source = draftRef.current.items.find((i) => i.key === itemKey);
+    if (!source) return;
+    const payee = source.payee ? { ...source.payee } : null;
+    for (const i of draftRef.current.items) payeeEdited.current.add(i.key);
+    setDraft((d) => ({ ...d, items: d.items.map((i) => ({ ...i, payee: payee ? { ...payee } : null })) }));
+    clearAiFields(draftRef.current.items.filter((i) => i.key !== itemKey).flatMap((i) => payeeBadges(i.key)));
   };
   const useDefaultPayee = (itemKey: string) => {
     payeeEdited.current.add(itemKey);
@@ -399,6 +412,10 @@ export function ClaimForm(p: {
         <ItemPayee
           payee={active.payee ?? draft.bank}
           own={!!active.payee}
+          hasDefault={validateBank(draft.bank).length === 0}
+          choices={payeeChoices(draft, active.key)}
+          onPick={(payee, isDefault) => pickPayee(active.key, payee, isDefault)}
+          onApplyToAll={draft.items.length > 1 ? () => applyPayeeToAll(active.key) : undefined}
           badge={(field) => (aiFields.has(`item:${active.key}:payee:${field}`) ? 'AI' : undefined)}
           onChange={(patch) => setItemPayee(active.key, patch)}
           onUseOwn={() => setItemPayee(active.key, {})}
@@ -445,30 +462,6 @@ export function ClaimForm(p: {
         </Section>
       ) : null}
 
-      <Section title="Default pay to">
-        <Text style={styles.hint}>
-          Used by every item without its own payee. Items paying different people are submitted as separate claims.
-        </Text>
-        <TextField label="Bank" value={draft.bank.bankName} onChangeText={(t) => setBank({ bankName: t })} />
-        <TextField
-          label="Account holder"
-          value={draft.bank.accountHolder}
-          onChangeText={(t) => setBank({ accountHolder: t })}
-          autoCapitalize="words"
-        />
-        <TextField
-          label="Account number"
-          value={draft.bank.accountNumber}
-          onChangeText={(t) => setBank({ accountNumber: t })}
-          keyboardType="number-pad"
-        />
-        {p.showSaveBank ? (
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Also save to my profile</Text>
-            <Switch value={draft.saveBankToProfile} onValueChange={(v) => setDraft((d) => ({ ...d, saveBankToProfile: v }))} />
-          </View>
-        ) : null}
-      </Section>
 
       {showErrors && errors.length ? <Text style={styles.errors}>{errors.join('\n')}</Text> : null}
       <Button title={p.submitLabel} onPress={submit} loading={submitting} />
@@ -488,7 +481,5 @@ const styles = StyleSheet.create({
   hint: { color: colors.muted },
   row: { flexDirection: 'row', gap: space(2) },
   flex: { flex: 1 },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  switchLabel: { fontSize: 15, color: colors.text },
   errors: { color: colors.danger, fontSize: 13, lineHeight: 20 },
 });

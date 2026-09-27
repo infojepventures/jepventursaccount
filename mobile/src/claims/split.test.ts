@@ -1,5 +1,5 @@
 import { emptyDraft, type ClaimDraft, type DraftItem } from './draft';
-import { effectivePayee, splitByPayee, splitErrors } from './split';
+import { effectivePayee, payeeChoices, splitByPayee, splitErrors } from './split';
 import type { AnyAttachment } from './types';
 
 const me = { bankName: 'Public Bank', accountHolder: 'YU WAI LOONG', accountNumber: '6803149225' };
@@ -68,5 +68,19 @@ describe('splitErrors', () => {
     expect(splitErrors(splitByPayee(d, [receipt('r1', 'a'), receipt('r2', 'b')]), { resubmit: true })).toEqual([
       'A resubmitted claim can have only one payee. Remove the other payee, or submit it as a new claim.',
     ]);
+  });
+});
+
+describe('payeeChoices', () => {
+  it("offers the default and the other items' payees, once each, but not the item's current one", () => {
+    const d = draft([item('a', '1'), item('b', '1', ultra), item('c', '1', { ...ultra, accountHolder: 'ultra cleaning sdn bhd' })]);
+    expect(payeeChoices(d, 'a')).toEqual([{ payee: ultra, isDefault: false }]);
+    expect(payeeChoices(d, 'b')).toEqual([{ payee: me, isDefault: true }]);
+  });
+
+  it('skips a default that is not filled in', () => {
+    const d = draft([item('a', '1'), item('b', '1', ultra)], { bankName: '', accountHolder: '', accountNumber: '' });
+    expect(payeeChoices(d, 'b')).toEqual([]);
+    expect(payeeChoices(d, 'a')).toEqual([{ payee: ultra, isDefault: false }]);
   });
 });

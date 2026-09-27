@@ -29,7 +29,6 @@ export default function EditClaimScreen() {
       resubmit
       initialDraft={initial.draft}
       initialAttachments={initial.attachments}
-      showSaveBank={false}
       submitLabel="Resubmit claim"
       onSubmitted={() => router.back()}
       onDiscarded={() => router.back()}

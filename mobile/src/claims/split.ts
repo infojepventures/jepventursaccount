@@ -69,3 +69,22 @@ export function splitErrors(groups: ClaimGroup[], opts: { resubmit: boolean }): 
   }
   return errors;
 }
+
+/**
+ * Payees to offer as one-tap choices in an item's Pay to: the default (when filled in) and every payee another
+ * item uses, once each in first-appearance order, leaving out the one the item already pays.
+ */
+export function payeeChoices(draft: ClaimDraft, itemKey: string): { payee: BankDetails; isDefault: boolean }[] {
+  const item = draft.items.find((i) => i.key === itemKey);
+  const seen = new Set<string>(item ? [payeeKey(effectivePayee(draft, item))] : []);
+  const out: { payee: BankDetails; isDefault: boolean }[] = [];
+  const offer = (payee: BankDetails, isDefault: boolean) => {
+    const k = payeeKey(payee);
+    if (seen.has(k) || validateBank(payee).length) return;
+    seen.add(k);
+    out.push({ payee, isDefault });
+  };
+  offer(draft.bank, true);
+  for (const other of draft.items) if (other.key !== itemKey && other.payee) offer(other.payee, false);
+  return out;
+}
