@@ -7,6 +7,7 @@ import { remoteAttachments } from '../../../claims/draft';
 import { AttachmentList } from '../../../components/AttachmentList';
 import { useClaim } from '../../../data/useClaims';
 import { buildWhatsAppClaimText } from '../../../files/claimShareText';
+import { withShortLinks } from '../../../files/shortLinks';
 import { shareTextToWhatsApp } from '../../../files/shareFile';
 import { api } from '../../../lib/apiInstance';
 import { Button } from '../../../ui/Button';
@@ -111,7 +112,8 @@ export default function ClaimDetailScreen() {
                   loading={busy}
                   onPress={() =>
                     run(async () => {
-                      await shareTextToWhatsApp(buildWhatsAppClaimText(claim));
+                      const [withLink] = await withShortLinks([claim]);
+                      await shareTextToWhatsApp(buildWhatsAppClaimText(withLink!));
                     })
                   }
                 />

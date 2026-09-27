@@ -3,12 +3,13 @@ import * as Application from 'expo-application';
 import * as Updates from 'expo-updates';
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthProvider';
 import { db } from '../lib/firebase';
 import { colors, radius, space } from '../ui/theme';
 import { nativeUpdateNeeded, type NativeUpdate } from './nativeUpdate';
+import { progressLabel, useApkUpdate } from './useApkUpdate';
 
 const FOREGROUND_CHECK_MS = 10 * 60 * 1000;
 
@@ -24,6 +25,7 @@ export function UpdateBanner() {
   const [nativeUpdate, setNativeUpdate] = useState<NativeUpdate | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const lastCheck = useRef(Date.now());
+  const apk = useApkUpdate();
 
   useEffect(() => {
     if (!Updates.isEnabled) return; // development builds load JS from Metro instead
@@ -52,10 +54,17 @@ export function UpdateBanner() {
         <Ionicons name="download-outline" size={20} color={colors.primaryText} />
         <View style={styles.body}>
           <Text style={styles.title}>A new version of JEP Claims is available</Text>
-          <Text style={styles.text}>{nativeUpdate.message ?? 'Download and install it to keep using the latest features.'}</Text>
+          <Text style={styles.text}>
+            {apk.progress !== null ? progressLabel(apk.progress) : nativeUpdate.message ?? 'Update now to keep using the latest features.'}
+          </Text>
         </View>
-        <Pressable onPress={() => void Linking.openURL(nativeUpdate.apkUrl)} style={styles.action} accessibilityRole="button">
-          <Text style={styles.actionText}>Download</Text>
+        <Pressable
+          onPress={() => void apk.install(nativeUpdate.apkUrl)}
+          disabled={apk.progress !== null}
+          style={[styles.action, apk.progress !== null && styles.actionBusy]}
+          accessibilityRole="button"
+        >
+          <Text style={styles.actionText}>Update</Text>
         </Pressable>
         <Pressable onPress={() => setDismissed(true)} hitSlop={10} accessibilityLabel="Later">
           <Ionicons name="close" size={18} color={colors.primaryText} />
@@ -103,5 +112,6 @@ const styles = StyleSheet.create({
   title: { color: colors.primaryText, fontWeight: '700', fontSize: 14 },
   text: { color: colors.primaryText, opacity: 0.8, fontSize: 12 },
   action: { backgroundColor: colors.card, borderRadius: radius, paddingHorizontal: space(3), paddingVertical: space(2) },
+  actionBusy: { opacity: 0.5 },
   actionText: { color: colors.text, fontWeight: '700', fontSize: 13 },
 });

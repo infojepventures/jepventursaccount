@@ -1,5 +1,6 @@
 import type { Api } from '../lib/api';
 import { draftToItems, type ClaimDraft } from './draft';
+import { payeeKey, splitByPayee } from './split';
 import type { AnyAttachment, LocalAttachment } from './types';
 
 export type PutFile = (url: string, uri: string, mimeType: string, onProgress: (fraction: number) => void) => Promise<string>;
@@ -84,4 +85,64 @@ export async function runSubmitFlow(
     resubmit: input.resubmit,
     saveBankToProfile: input.draft.saveBankToProfile,
   });
+}
+
+export interface SubmittedGroup {
+  claimId: string;
+  /** Draft items that went into this claim. */
+  itemKeys: string[];
+  /** Receipts (form keys) that went into this claim. */
+  attachmentKeys: string[];
+  /** Original uploads (in the form's own upload folder) that were re-uploaded into this claim and can be discarded. */
+  movedUploadIds: string[];
+}
+
+/**
+ * Submits the draft as one claim per payee (see splitByPayee). Split-off payees become new claims first — their
+ * receipts are uploaded again into the new claim's folder — and the payee with the most receipts already
+ * uploaded keeps `input.claimId` and goes last, so if anything fails the original claim is still unsaved and
+ * a retry resubmits only what's left. `onGroupSubmitted` fires after each claim is created; returns all ids.
+ */
+export async function runSplitSubmit(
+  deps: { api: Pick<Api, 'uploadSession' | 'submitClaim'>; putFile: PutFile; newClaimId: () => string },
+  input: SubmitFlowInput,
+  onUpdate: (key: string, patch: Partial<LocalAttachment>) => void,
+  onGroupSubmitted: (group: SubmittedGroup) => void = () => {},
+): Promise<string[]> {
+  const groups = splitByPayee(input.draft, input.attachments);
+  const uploadedCount = (atts: AnyAttachment[]) => atts.filter((a) => a.kind === 'remote' || a.uploadedId).length;
+  let primary = 0;
+  groups.forEach((g, i) => {
+    if (uploadedCount(g.attachments) > uploadedCount(groups[primary]!.attachments)) primary = i;
+  });
+  const defaultKey = payeeKey(input.draft.bank);
+  const order = [...groups.keys()].filter((i) => i !== primary).concat(primary);
+
+  const ids: string[] = [];
+  for (const i of order) {
+    const g = groups[i]!;
+    const isPrimary = i === primary;
+    const claimId = isPrimary ? input.claimId : deps.newClaimId();
+    const draft: ClaimDraft = {
+      ...input.draft,
+      items: g.items,
+      bank: g.payee,
+      saveBankToProfile: input.draft.saveBankToProfile && payeeKey(g.payee) === defaultKey,
+    };
+    // Split-off claims need their own copies in their own upload folder (receipts are bound to a claim's folder).
+    const attachments: AnyAttachment[] = isPrimary
+      ? g.attachments
+      : g.attachments.map((a) =>
+          a.kind === 'local' ? { ...a, key: `${a.key}@${claimId}`, uploadedId: undefined, progress: undefined, error: undefined } : a,
+        );
+    await runSubmitFlow({ api: deps.api, putFile: deps.putFile }, { claimId, draft, attachments, resubmit: input.resubmit }, isPrimary ? onUpdate : () => {});
+    ids.push(claimId);
+    onGroupSubmitted({
+      claimId,
+      itemKeys: g.items.map((it) => it.key),
+      attachmentKeys: g.attachments.map((a) => a.key),
+      movedUploadIds: isPrimary ? [] : g.attachments.flatMap((a) => (a.kind === 'local' && a.uploadedId ? [a.uploadedId] : [])),
+    });
+  }
+  return ids;
 }

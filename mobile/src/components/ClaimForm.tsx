@@ -1,18 +1,23 @@
 import { useRef, useState } from 'react';
-import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
-import { formatRM, MAX_ATTACHMENTS, parseAmountToCents } from '@jep/shared';
+import { Alert, StyleSheet, Text, View } from 'react-native';
+import {
+  extractSuggestionFromText, formatRM, MAX_ATTACHMENTS, parseAmountToCents, validateBank, type AttachmentSuggestion, type BankDetails,
+} from '@jep/shared';
 import { applySuggestion } from '../claims/applySuggestion';
+import { extractPdfText } from '../claims/pdfText';
 import { claimSummary } from '../claims/claimSummary';
-import { draftErrors, emptyItem, itemErrors, type ClaimDraft, type DraftItem } from '../claims/draft';
+import { draftErrors, draftIsDirty, emptyItem, itemErrors, type ClaimDraft, type DraftItem } from '../claims/draft';
 import { orderByItem, receiptsForItem, unlinkedReceipts } from '../claims/itemReceipts';
+import { payeeChoices } from '../claims/split';
 import { recordPayeeChange, removePayeeSources, type PayeeHistory } from '../claims/payeeHistory';
 import { recognizeText } from '../claims/ocr';
 import { pickFromCamera, pickFromLibrary, pickPdfs } from '../claims/pickers';
 import { putFile } from '../claims/putFile';
-import { runSubmitFlow, uploadPendingAttachments } from '../claims/submitFlow';
+import { runSplitSubmit, uploadPendingAttachments, type SubmittedGroup } from '../claims/submitFlow';
 import type { AnyAttachment, LocalAttachment } from '../claims/types';
 import { friendlyMessage } from '../lib/api';
 import { api } from '../lib/apiInstance';
+import { newClaimId } from '../lib/firebase';
 import { Button } from '../ui/Button';
 import { Screen } from '../ui/Screen';
 import { Section } from '../ui/Section';
@@ -20,6 +25,7 @@ import { TextField } from '../ui/TextField';
 import { colors, space } from '../ui/theme';
 import { AttachmentList } from './AttachmentList';
 import { ClaimSummaryCard } from './ClaimSummaryCard';
+import { ItemPayee } from './ItemPayee';
 import { ItemTabs, type ItemTab } from './ItemTabs';
 
 export function ClaimForm(p: {
@@ -27,9 +33,12 @@ export function ClaimForm(p: {
   resubmit: boolean;
   initialDraft: ClaimDraft;
   initialAttachments: AnyAttachment[];
-  showSaveBank: boolean;
   submitLabel: string;
-  onSubmitted: (claimId: string) => void;
+  /** One id, or several when items paying different people were submitted as separate claims. */
+  onSubmitted: (claimIds: string[]) => void;
+  /** Shows a discard button while the form has changes; called after they (and new uploads) are thrown away. */
+  onDiscarded?: () => void;
+  discardLabel?: string;
 }) {
   const [draft, setDraft] = useState<ClaimDraft>(p.initialDraft);
   const [attachments, setAttachments] = useState<AnyAttachment[]>(p.initialAttachments);
@@ -37,15 +46,16 @@ export function ClaimForm(p: {
   const [showErrors, setShowErrors] = useState(false);
   const [aiFields, setAiFields] = useState<Set<string>>(new Set());
   const [activeKey, setActiveKey] = useState(p.initialDraft.items[0]?.key ?? '');
-  const payeeEditedByUser = useRef(false);
+  // Items whose payee the user edited (or reset): a receipt read later never overwrites that.
+  const payeeEdited = useRef(new Set<string>());
   // Latest draft for async OCR callbacks: applySuggestion must run outside a setState updater so its
   // AI-filled field keys are available synchronously (React may defer updaters).
   const draftRef = useRef(draft);
   draftRef.current = draft;
   // Receipts removed from the form. An upload still in flight when removed is discarded once it lands.
   const removedKeys = useRef(new Set<string>());
-  // Receipts that overwrote Pay to, so removing one can put back the details from before it.
-  const payeeHistory = useRef<PayeeHistory>([]);
+  // Per item: receipts that overwrote its payee, so removing one can put back what was there before it.
+  const payeeHistories = useRef(new Map<string, PayeeHistory>());
   // Latest attachments, for callbacks that outlive a render (upload/OCR completions, the remove-item dialog).
   // Every change goes through updateAttachments so this never lags behind state.
   const attachmentsRef = useRef(attachments);
@@ -54,7 +64,7 @@ export function ClaimForm(p: {
     setAttachments(attachmentsRef.current);
   };
 
-  const errors = draftErrors(draft, attachments.length);
+  const errors = draftErrors(draft, attachments, { resubmit: p.resubmit });
   const remaining = MAX_ATTACHMENTS - attachments.length;
   const activeIndex = Math.max(0, draft.items.findIndex((i) => i.key === activeKey));
   const active = draft.items[activeIndex]!;
@@ -72,42 +82,107 @@ export function ClaimForm(p: {
     setDraft((d) => ({ ...d, items: d.items.map((i) => (i.key === key ? { ...i, ...patch } : i)) }));
     clearAiFields(Object.keys(patch).map((field) => `item:${key}:${field}`));
   };
-  const setBank = (patch: Partial<ClaimDraft['bank']>) => {
-    payeeEditedByUser.current = true;
-    setDraft((d) => ({ ...d, bank: { ...d.bank, ...patch } }));
-    clearAiFields(Object.keys(patch).map((field) => `bank:${field}`));
+  const payeeBadges = (itemKey: string) => ['bankName', 'accountHolder', 'accountNumber'].map((f) => `item:${itemKey}:payee:${f}`);
+  /** Gives an item its own payee (a copy of the default to edit) or edits it; the user's edits always win. */
+  const setItemPayee = (itemKey: string, patch: Partial<BankDetails>) => {
+    payeeEdited.current.add(itemKey);
+    setDraft((d) => ({
+      ...d,
+      items: d.items.map((i) => (i.key === itemKey ? { ...i, payee: { ...(i.payee ?? d.bank), ...patch } } : i)),
+    }));
+    clearAiFields(Object.keys(patch).map((field) => `item:${itemKey}:payee:${field}`));
+  };
+  /** One-tap choice of a payee another item already uses (or the default). */
+  const pickPayee = (itemKey: string, payee: BankDetails, isDefault: boolean) => {
+    if (isDefault) return useDefaultPayee(itemKey);
+    payeeEdited.current.add(itemKey);
+    setDraft((d) => ({ ...d, items: d.items.map((i) => (i.key === itemKey ? { ...i, payee: { ...payee } } : i)) }));
+    clearAiFields(payeeBadges(itemKey));
+  };
+  /** Every item pays what this item pays (its own payee, or the default). */
+  const applyPayeeToAll = (itemKey: string) => {
+    const source = draftRef.current.items.find((i) => i.key === itemKey);
+    if (!source) return;
+    const payee = source.payee ? { ...source.payee } : null;
+    for (const i of draftRef.current.items) payeeEdited.current.add(i.key);
+    setDraft((d) => ({ ...d, items: d.items.map((i) => ({ ...i, payee: payee ? { ...payee } : null })) }));
+    clearAiFields(draftRef.current.items.filter((i) => i.key !== itemKey).flatMap((i) => payeeBadges(i.key)));
+  };
+  const useDefaultPayee = (itemKey: string) => {
+    payeeEdited.current.add(itemKey);
+    setDraft((d) => ({ ...d, items: d.items.map((i) => (i.key === itemKey ? { ...i, payee: null } : i)) }));
+    clearAiFields(payeeBadges(itemKey));
   };
 
   const patchAttachment = (key: string, patch: Partial<LocalAttachment>) =>
     updateAttachments((list) => list.map((a) => (a.key === key && a.kind === 'local' ? { ...a, ...patch } : a)));
   const findLocal = (key: string) => attachmentsRef.current.find((x): x is LocalAttachment => x.key === key && x.kind === 'local');
 
-  /** Reads a receipt and overwrites its own item's fields (and the payee) with what it found. */
-  const analyzeAttachment = async (key: string, fileId: string, mimeType: string, uri: string, itemKey: string) => {
+  // Per receipt: 'server' once on-device reading found no text (a scanned PDF), so the server analyses it as
+  // soon as its upload lands; 'done' once it has been read.
+  const analysisOutcome = useRef(new Map<string, 'done' | 'server'>());
+
+  /** Overwrites the receipt's own item's fields (and the payee) with what was read from it. */
+  const applyReceiptSuggestion = (key: string, itemKey: string, suggestion: AttachmentSuggestion) => {
+    const before = draftRef.current;
+    const opts = { payeeEditedByUser: payeeEdited.current.has(itemKey) };
+    const result = applySuggestion(before, itemKey, suggestion, opts);
+    const payeeBefore = before.items.find((i) => i.key === itemKey)?.payee ?? null;
+    const payeeAfter = result.draft.items.find((i) => i.key === itemKey)?.payee ?? null;
+    if (payeeAfter !== payeeBefore) {
+      payeeHistories.current.set(itemKey, recordPayeeChange(payeeHistories.current.get(itemKey) ?? [], key, payeeBefore));
+    }
+    draftRef.current = result.draft;
+    // Re-apply on the latest state (applySuggestion is pure and deterministic) so a keystroke queued since
+    // the last render isn't overwritten.
+    setDraft((d) => applySuggestion(d, itemKey, suggestion, opts).draft);
+    if (result.aiFields.size) setAiFields((prev) => new Set([...prev, ...result.aiFields]));
+    patchAttachment(key, { analyzeStage: undefined, analyzed: true, filledCount: result.aiFields.size });
+  };
+
+  /**
+   * Reads a receipt on the device right after it is picked, in parallel with its upload: ML Kit OCR for photos,
+   * the PDF's text layer for PDFs, then the shared extraction rules. Only a PDF with no text (scanned) waits for
+   * its upload and goes to the server.
+   */
+  const analyzeLocally = async (file: LocalAttachment) => {
+    const { key, uri, mimeType } = file;
+    const itemKey = file.itemKey ?? '';
     const isPdf = mimeType === 'application/pdf';
-    patchAttachment(key, { analyzeStage: isPdf ? 'reading' : 'scanning', analyzeError: undefined, filledCount: undefined });
+    analysisOutcome.current.delete(key);
+    patchAttachment(key, { analyzeStage: 'scanning', analyzeError: undefined, filledCount: undefined });
+    const text = isPdf ? await extractPdfText(uri) : await recognizeText(uri);
+    if (removedKeys.current.has(key)) return; // removed while being read: don't fill the form from it
+    if (text) {
+      analysisOutcome.current.set(key, 'done');
+      applyReceiptSuggestion(key, itemKey, extractSuggestionFromText(text));
+      return;
+    }
+    if (!isPdf) {
+      analysisOutcome.current.set(key, 'done');
+      patchAttachment(key, { analyzeStage: undefined, analyzed: true, filledCount: 0 });
+      return;
+    }
+    analysisOutcome.current.set(key, 'server');
+    patchAttachment(key, { analyzeStage: 'reading' });
+    const uploadedId = findLocal(key)?.uploadedId;
+    if (uploadedId) void analyzeOnServer(key, uploadedId, itemKey);
+  };
+
+  /** Server-side reading of an uploaded PDF (text layer, or Document AI when configured). */
+  const analyzeOnServer = async (key: string, fileId: string, itemKey: string) => {
+    analysisOutcome.current.set(key, 'done');
+    patchAttachment(key, { analyzeStage: 'reading', analyzeError: undefined });
     try {
-      // PDFs are text-extracted server-side; images need on-device OCR text sent along.
-      const text = isPdf ? undefined : (await recognizeText(uri)) ?? undefined;
-      patchAttachment(key, { analyzeStage: 'reading' });
-      const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId, ...(text ? { text } : {}) });
-      if (removedKeys.current.has(key)) return; // removed while being read: don't fill the form from it
-      const before = draftRef.current;
-      const opts = { payeeEditedByUser: payeeEditedByUser.current };
-      const result = applySuggestion(before, itemKey, suggestion, opts);
-      if (result.draft.bank !== before.bank) payeeHistory.current = recordPayeeChange(payeeHistory.current, key, before.bank);
-      draftRef.current = result.draft;
-      // Re-apply on the latest state (applySuggestion is pure and deterministic) so a keystroke queued since
-      // the last render isn't overwritten.
-      setDraft((d) => applySuggestion(d, itemKey, suggestion, opts).draft);
-      if (result.aiFields.size) setAiFields((prev) => new Set([...prev, ...result.aiFields]));
-      patchAttachment(key, { analyzeStage: undefined, analyzed: true, filledCount: result.aiFields.size });
+      const { suggestion } = await api.analyzeAttachment({ claimId: p.claimId, fileId });
+      if (removedKeys.current.has(key)) return;
+      applyReceiptSuggestion(key, itemKey, suggestion);
     } catch {
       patchAttachment(key, { analyzeStage: undefined, analyzed: true, analyzeError: "Couldn't read" });
     }
   };
 
-  /** Uploads `files` straight away and analyses each one as soon as its upload finishes. */
+  /** Uploads `files` straight away; a scanned PDF is analysed on the server once its upload lands. */
   const uploadAndAnalyze = async (files: LocalAttachment[]) => {
     const byKey = new Map(files.map((f) => [f.key, f]));
     const onAttachmentUpdate = (key: string, patch: Partial<LocalAttachment>) => {
@@ -117,7 +192,7 @@ export function ClaimForm(p: {
       }
       patchAttachment(key, patch);
       const file = patch.uploadedId ? byKey.get(key) : undefined;
-      if (file) void analyzeAttachment(key, patch.uploadedId!, file.mimeType, file.uri, file.itemKey ?? '');
+      if (file && analysisOutcome.current.get(key) === 'server') void analyzeOnServer(key, patch.uploadedId!, file.itemKey ?? '');
     };
     try {
       await uploadPendingAttachments(api, putFile, p.claimId, files, onAttachmentUpdate);
@@ -140,6 +215,7 @@ export function ClaimForm(p: {
       }
       if (accepted.length === 0) return;
       updateAttachments((a) => [...a, ...accepted]);
+      for (const file of accepted) void analyzeLocally(file);
       await uploadAndAnalyze(accepted);
     } catch (e) {
       Alert.alert('Could not add file', friendlyMessage(e));
@@ -157,17 +233,18 @@ export function ClaimForm(p: {
     updateAttachments((list) => list.filter((x) => x.key !== key));
     // Saved attachments of a claim being resubmitted stay until the resubmission replaces them.
     if (a?.kind === 'local' && a.uploadedId) discardFromDrive([a.uploadedId]);
-    restorePayee(key);
+    if (a?.itemKey) restorePayee(key, a.itemKey);
   };
 
-  /** If the removed receipt's details are what Pay to shows, put back what was there before it. */
-  const restorePayee = (key: string) => {
-    const { history, restore } = removePayeeSources(payeeHistory.current, [key]);
-    payeeHistory.current = history;
-    if (!restore || payeeEditedByUser.current) return; // never undo the user's own typing
-    draftRef.current = { ...draftRef.current, bank: restore };
-    setDraft((d) => ({ ...d, bank: restore }));
-    if (history.length === 0) clearAiFields(['bank:bankName', 'bank:accountHolder', 'bank:accountNumber']);
+  /** If the removed receipt's details are what the item's Pay to shows, put back what was there before it. */
+  const restorePayee = (key: string, itemKey: string) => {
+    const { history, restore } = removePayeeSources(payeeHistories.current.get(itemKey) ?? [], [key]);
+    payeeHistories.current.set(itemKey, history);
+    if (!restore || payeeEdited.current.has(itemKey)) return; // never undo the user's own typing
+    const items = draftRef.current.items.map((i) => (i.key === itemKey ? { ...i, payee: restore.value } : i));
+    draftRef.current = { ...draftRef.current, items };
+    setDraft((d) => ({ ...d, items: d.items.map((i) => (i.key === itemKey ? { ...i, payee: restore.value } : i)) }));
+    if (history.length === 0) clearAiFields(payeeBadges(itemKey));
   };
 
   const retryAttachment = (key: string, step: 'upload' | 'analyze') => {
@@ -176,8 +253,8 @@ export function ClaimForm(p: {
     if (step === 'upload') {
       patchAttachment(key, { error: undefined, progress: undefined });
       void uploadAndAnalyze([{ ...a, error: undefined }]);
-    } else if (a.uploadedId) {
-      void analyzeAttachment(key, a.uploadedId, a.mimeType, a.uri, a.itemKey ?? '');
+    } else {
+      void analyzeLocally(a);
     }
   };
 
@@ -209,6 +286,31 @@ export function ClaimForm(p: {
     );
   };
 
+  const hasNewReceipts = attachments.some((a) => a.kind === 'local');
+  const canDiscard = !!p.onDiscarded && (hasNewReceipts || draftIsDirty(p.initialDraft, draft));
+
+  /** Throws the draft away: receipts added in this form are removed from Drive (in-flight ones once they land). */
+  const discard = () => {
+    const added = attachmentsRef.current.filter((a): a is LocalAttachment => a.kind === 'local');
+    Alert.alert(
+      p.resubmit ? 'Discard your changes?' : 'Discard this claim?',
+      added.length ? `The ${added.length} receipt${added.length === 1 ? '' : 's'} you added will be deleted.` : undefined,
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            for (const a of added) removedKeys.current.add(a.key);
+            const uploaded = added.map((a) => a.uploadedId).filter((id): id is string => !!id);
+            if (uploaded.length) discardFromDrive(uploaded);
+            p.onDiscarded?.();
+          },
+        },
+      ],
+    );
+  };
+
   const submit = async () => {
     setShowErrors(true);
     if (errors.length) {
@@ -223,13 +325,36 @@ export function ClaimForm(p: {
       return;
     }
     setSubmitting(true);
+    const done: string[] = [];
+    // A split-off claim is final: take its items and receipts out of the form (so a retry after a later failure
+    // only sends the rest) and drop the originals it re-uploaded from this form's upload folder.
+    const onGroupSubmitted = (g: SubmittedGroup) => {
+      done.push(g.claimId);
+      if (g.claimId === p.claimId) return;
+      if (g.movedUploadIds.length) discardFromDrive(g.movedUploadIds);
+      for (const k of g.attachmentKeys) removedKeys.current.add(k);
+      const gone = new Set(g.itemKeys);
+      updateAttachments((list) => list.filter((a) => !g.attachmentKeys.includes(a.key)));
+      draftRef.current = { ...draftRef.current, items: draftRef.current.items.filter((i) => !gone.has(i.key)) };
+      setDraft((d) => ({ ...d, items: d.items.filter((i) => !gone.has(i.key)) }));
+      const next = draftRef.current.items[0];
+      if (next) setActiveKey(next.key);
+    };
     try {
       // Item by item, so the merged PDF's receipts follow the items.
       const ordered = orderByItem(attachmentsRef.current, draft.items);
-      await runSubmitFlow({ api, putFile }, { claimId: p.claimId, draft, attachments: ordered, resubmit: p.resubmit }, patchAttachment);
-      p.onSubmitted(p.claimId);
+      const ids = await runSplitSubmit(
+        { api, putFile, newClaimId },
+        { claimId: p.claimId, draft, attachments: ordered, resubmit: p.resubmit },
+        patchAttachment,
+        onGroupSubmitted,
+      );
+      p.onSubmitted(ids);
     } catch (e) {
-      Alert.alert('Not submitted', friendlyMessage(e));
+      const partial = done.length
+        ? `${done.length} claim${done.length === 1 ? ' was' : 's were'} submitted; the rest are still here. `
+        : '';
+      Alert.alert('Not submitted', `${partial}${friendlyMessage(e)}`);
     } finally {
       setSubmitting(false);
     }
@@ -243,7 +368,7 @@ export function ClaimForm(p: {
       amountLabel: cents !== null && cents > 0 ? formatRM(cents) : '—',
       receiptCount: receipts.length,
       busy: receipts.some((r) => r.kind === 'local' && !r.error && (!r.uploadedId || r.analyzeStage !== undefined)),
-      hasError: showErrors && itemErrors(item).length > 0,
+      hasError: showErrors && (itemErrors(item).length > 0 || (!!item.payee && validateBank(item.payee).length > 0)),
     };
   });
   const activeReceipts = receiptsForItem(attachments, active.key);
@@ -284,6 +409,20 @@ export function ClaimForm(p: {
           {activeErrors.length ? <Text style={styles.errors}>{activeErrors.join('\n')}</Text> : null}
         </View>
 
+        <ItemPayee
+          payee={active.payee ?? draft.bank}
+          own={!!active.payee}
+          hasDefault={validateBank(draft.bank).length === 0}
+          choices={payeeChoices(draft, active.key)}
+          onPick={(payee, isDefault) => pickPayee(active.key, payee, isDefault)}
+          onApplyToAll={draft.items.length > 1 ? () => applyPayeeToAll(active.key) : undefined}
+          badge={(field) => (aiFields.has(`item:${active.key}:payee:${field}`) ? 'AI' : undefined)}
+          onChange={(patch) => setItemPayee(active.key, patch)}
+          onUseOwn={() => setItemPayee(active.key, {})}
+          onUseDefault={() => useDefaultPayee(active.key)}
+          disabled={submitting}
+        />
+
         <View style={styles.receipts}>
           <View style={styles.receiptsHead}>
             <Text style={styles.subTitle}>Receipts for item {activeIndex + 1}</Text>
@@ -323,37 +462,12 @@ export function ClaimForm(p: {
         </Section>
       ) : null}
 
-      <Section title="Pay to">
-        <TextField
-          label="Bank"
-          value={draft.bank.bankName}
-          onChangeText={(t) => setBank({ bankName: t })}
-          badge={aiFields.has('bank:bankName') ? 'AI' : undefined}
-        />
-        <TextField
-          label="Account holder"
-          value={draft.bank.accountHolder}
-          onChangeText={(t) => setBank({ accountHolder: t })}
-          autoCapitalize="words"
-          badge={aiFields.has('bank:accountHolder') ? 'AI' : undefined}
-        />
-        <TextField
-          label="Account number"
-          value={draft.bank.accountNumber}
-          onChangeText={(t) => setBank({ accountNumber: t })}
-          keyboardType="number-pad"
-          badge={aiFields.has('bank:accountNumber') ? 'AI' : undefined}
-        />
-        {p.showSaveBank ? (
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Also save to my profile</Text>
-            <Switch value={draft.saveBankToProfile} onValueChange={(v) => setDraft((d) => ({ ...d, saveBankToProfile: v }))} />
-          </View>
-        ) : null}
-      </Section>
 
       {showErrors && errors.length ? <Text style={styles.errors}>{errors.join('\n')}</Text> : null}
       <Button title={p.submitLabel} onPress={submit} loading={submitting} />
+      {canDiscard && !submitting ? (
+        <Button title={p.discardLabel ?? 'Discard draft'} variant="ghost" icon="trash-outline" onPress={discard} />
+      ) : null}
     </Screen>
   );
 }
@@ -367,7 +481,5 @@ const styles = StyleSheet.create({
   hint: { color: colors.muted },
   row: { flexDirection: 'row', gap: space(2) },
   flex: { flex: 1 },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  switchLabel: { fontSize: 15, color: colors.text },
   errors: { color: colors.danger, fontSize: 13, lineHeight: 20 },
 });

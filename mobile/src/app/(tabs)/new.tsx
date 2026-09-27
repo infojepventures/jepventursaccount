@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { Alert } from 'react-native';
 import { useAuth } from '../../auth/AuthProvider';
 import { emptyDraft } from '../../claims/draft';
 import { ClaimForm } from '../../components/ClaimForm';
@@ -20,12 +21,19 @@ export default function NewClaimTab() {
       resubmit={false}
       initialDraft={initialDraft}
       initialAttachments={[]}
-      showSaveBank
       submitLabel="Submit claim"
-      onSubmitted={(id) => {
+      onSubmitted={(ids) => {
         setRound((r) => r + 1);
-        router.push({ pathname: '/claim/[id]', params: { id } });
+        if (ids.length === 1) {
+          router.push({ pathname: '/claim/[id]', params: { id: ids[0]! } });
+        } else {
+          // Items paying different people went in as one claim each.
+          router.push('/');
+          Alert.alert('Submitted', `Your items were submitted as ${ids.length} claims, one per payee.`);
+        }
       }}
+      // A fresh claim id and an empty form; the old one's leftover (empty) upload folder is swept up daily.
+      onDiscarded={() => setRound((r) => r + 1)}
     />
   );
 }

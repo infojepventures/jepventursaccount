@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ClaimRow } from '../data/useClaims';
 import { buildWhatsAppBatchText } from '../files/claimShareText';
+import { withShortLinks } from '../files/shortLinks';
 import { shareTextToWhatsApp } from '../files/shareFile';
 import { Button } from '../ui/Button';
 import { colors, space } from '../ui/theme';
@@ -95,7 +96,7 @@ export function useBatchShareSelection(rows: ClaimRow[], resetKey: string): Batc
   const share = () =>
     run(async () => {
       if (selectedClaims.length === 0) return;
-      const text = buildWhatsAppBatchText(selectedClaims);
+      const text = buildWhatsAppBatchText(await withShortLinks(selectedClaims));
       if (text.length > MAX_SHARE_TEXT_LENGTH) {
         Alert.alert('Too many claims selected — please share in smaller batches.');
         return;

@@ -18,6 +18,18 @@ export function ClaimSummaryCard({ summary: s, onJumpToItem }: { summary: ClaimS
         {s.payee ? ` · Pay to ${s.payee}` : ''}
       </Text>
 
+      {s.claims.length > 1 ? (
+        <View style={styles.split}>
+          <Text style={styles.splitTitle}>Submits as {s.claims.length} claims, one per payee</Text>
+          {s.claims.map((c, i) => (
+            <View key={`${c.payee}-${i}`} style={styles.splitRow}>
+              <Text style={styles.splitPayee} numberOfLines={1}>{c.payee || 'Payee not set'}</Text>
+              <Text style={styles.splitAmount}>{formatRM(c.totalCents)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       <View style={styles.divider} />
 
       {s.ready ? (
@@ -60,6 +72,11 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 0.6, color: colors.muted, textTransform: 'uppercase' },
   total: { fontSize: 30, fontWeight: '800', color: colors.text, marginTop: space(1) },
   meta: { fontSize: 13, color: colors.muted },
+  split: { marginTop: space(3), gap: space(1), padding: space(3), borderRadius: radius, backgroundColor: colors.bg },
+  splitTitle: { fontSize: 12, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.4 },
+  splitRow: { flexDirection: 'row', justifyContent: 'space-between', gap: space(3) },
+  splitPayee: { flexShrink: 1, fontSize: 14, color: colors.text },
+  splitAmount: { fontSize: 14, fontWeight: '700', color: colors.text },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: space(3) },
   list: { gap: space(2) },
   row: { flexDirection: 'row', alignItems: 'center', gap: space(2) },
