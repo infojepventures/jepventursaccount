@@ -8,7 +8,7 @@
     "android": "expo run:android",
     "test": "jest",
     "typecheck": "tsc --noEmit",
-    "update:prod": "eas update --branch production --environment production --platform android"
+    "update:prod": "npx --yes eas-cli@latest update --branch production --environment production --platform android"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
