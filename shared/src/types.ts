@@ -81,10 +81,8 @@ export interface PaidInfo {
 }
 
 export interface ClaimDoc {
-  /** Full ref no., e.g. PR-JEP-202609-0005-Draft; the suffix follows `status` (see refNo.ts). */
+  /** PR-JEP-{submission yyyyMM}-{NNNN}, fixed once first submitted (older claims: PR-JEP-yyyyMM-draft / -001). */
   refNo: string;
-  /** PR-JEP-{submission yyyyMM}-{sequence}, fixed once the claim is first submitted. Absent on claims from before it existed. */
-  refBase?: string;
   status: ClaimStatus;
   applicant: { uid: string; name: string; position: string };
   items: ClaimItem[];

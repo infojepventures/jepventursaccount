@@ -1,9 +1,7 @@
-import { claimPdfLink, displayRefNo, formatRM } from '@jep/shared';
+import { claimPdfLink, formatRM } from '@jep/shared';
 
 export interface WhatsAppClaimTextInput {
   refNo: string;
-  /** PR-JEP-yyyyMM-NNNN without the status suffix, when the claim has one. */
-  refBase?: string;
   totalCents: number;
   items: { description: string; amountCents: number; reference?: string }[];
   payment: { bankName: string; accountHolder: string; accountNumber: string };
@@ -39,8 +37,7 @@ function buildGroupText(claims: WhatsAppClaimTextInput[]): string {
   const lines: string[] = [`> *Supplier: ${accountHolder}*`];
 
   claims.forEach((claim, ci) => {
-    // The number itself, without the status suffix (Draft/Approved/...), stands in for a missing Doc No.
-    const refNo = clean(displayRefNo(claim));
+    const refNo = clean(claim.refNo);
     if (claim.pdf.fileName) lines.push(clean(claim.pdf.fileName).replace(/\.pdf$/i, ''));
     const link = claimPdfLink(claim.pdf);
     if (link) lines.push(link);

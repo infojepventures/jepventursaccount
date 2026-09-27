@@ -6,7 +6,7 @@ const claim = (id: string, submittedAt: string, status: 'submitted' | 'approved'
 });
 
 describe('planRenumber', () => {
-  it('numbers every claim from 0001 in submission order, with its submission month and status suffix', () => {
+  it('numbers every claim from 0001 in submission order, with its submission month', () => {
     const plan = planRenumber([
       claim('b', '2026-09-26T03:00:00Z', 'approved', 'PR-JEP-202609-002'),
       claim('a', '2026-09-26T01:00:00Z', 'paid', 'PR-JEP-202609-001'),
@@ -14,10 +14,10 @@ describe('planRenumber', () => {
       claim('d', '2026-09-27T05:00:00Z', 'cancelled', 'PR-JEP-202609-draft'),
     ]);
     expect(plan.changes).toEqual([
-      { id: 'a', from: 'PR-JEP-202609-001', refBase: 'PR-JEP-202609-0001', refNo: 'PR-JEP-202609-0001-Paid' },
-      { id: 'b', from: 'PR-JEP-202609-002', refBase: 'PR-JEP-202609-0002', refNo: 'PR-JEP-202609-0002-Approved' },
-      { id: 'd', from: 'PR-JEP-202609-draft', refBase: 'PR-JEP-202609-0003', refNo: 'PR-JEP-202609-0003-Cancelled' },
-      { id: 'c', from: 'PR-JEP-202610-draft', refBase: 'PR-JEP-202610-0004', refNo: 'PR-JEP-202610-0004-Draft' },
+      { id: 'a', from: 'PR-JEP-202609-001', refNo: 'PR-JEP-202609-0001' },
+      { id: 'b', from: 'PR-JEP-202609-002', refNo: 'PR-JEP-202609-0002' },
+      { id: 'd', from: 'PR-JEP-202609-draft', refNo: 'PR-JEP-202609-0003' },
+      { id: 'c', from: 'PR-JEP-202610-draft', refNo: 'PR-JEP-202610-0004' },
     ]);
     expect(plan.nextCounter).toBe(5);
   });

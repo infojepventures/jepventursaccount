@@ -1,7 +1,7 @@
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from 'pdf-lib';
 import subsetFont from 'subset-font';
-import { displayRefNo, formatRM, formatYmd, formatYmdHms, type ClaimDoc } from '@jep/shared';
+import { formatRM, formatYmd, formatYmdHms, type ClaimDoc } from '@jep/shared';
 import type { PdfAssets } from '../assets';
 import { wrapText } from './wrapText';
 
@@ -228,10 +228,10 @@ export async function buildClaimPdf(
 }
 
 export function toPdfInput(c: ClaimDoc, now: Date): ClaimPdfInput {
-  // Approval details only once approved. The REF shows the number without its status suffix; the file name keeps it.
+  // Approval details only once approved.
   const approved = c.status === 'approved' || c.status === 'paid';
   return {
-    refNo: displayRefNo(c),
+    refNo: c.refNo,
     applicant: { name: c.applicant.name, position: c.applicant.position },
     date: formatYmd(c.submittedAt.toDate()),
     items: c.items.map((i) => ({ description: i.description, amountCents: i.amountCents, reference: i.reference })),

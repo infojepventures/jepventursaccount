@@ -93,23 +93,6 @@ describe('buildWhatsAppClaimText', () => {
 });
 
 describe('buildWhatsAppClaimText item lines', () => {
-  it('uses the ref number without its status suffix when an item has no Doc No.', () => {
-    const claim = {
-      ...baseClaim,
-      refNo: 'PR-JEP-202609-0005-Approved',
-      refBase: 'PR-JEP-202609-0005',
-      items: [{ description: 'Food', amountCents: 2000 }],
-      pdf: { driveFileId: 'ABC', fileName: 'PR-JEP-202609-0005-Approved-YU WAI LOONG-20.00.pdf' },
-    };
-    const text = buildWhatsAppClaimText(claim);
-    expect(text).toContain(['> Inv: *PR-JEP-202609-0005 - RM 20.00*', 'Food'].join('\n'));
-    // The file name line stays the real PDF name.
-    expect(text).toContain('PR-JEP-202609-0005-Approved-YU WAI LOONG-20.00');
-    // Without refBase (older data) the suffix is stripped from the ref no.
-    const { refBase: _drop, ...noBase } = claim;
-    expect(buildWhatsAppClaimText({ ...noBase, refNo: 'PR-JEP-202609-0005-Paid' })).toContain('> Inv: *PR-JEP-202609-0005 - RM 20.00*');
-  });
-
   it("falls back to the payee's name when an item has no description", () => {
     const claim = { ...baseClaim, items: [{ description: '  ', amountCents: 3000, reference: 'INV-9' }] };
     const text = buildWhatsAppClaimText(claim);

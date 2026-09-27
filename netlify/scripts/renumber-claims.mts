@@ -1,7 +1,7 @@
 /**
- * One-off: renumber every claim to PR-JEP-{submission yyyyMM}-{NNNN}-{status} (0001 in submission order),
+ * One-off: renumber every claim to PR-JEP-{submission yyyyMM}-{NNNN} (0001 in submission order),
  * set counters/claimSeq to continue after the last number, and regenerate each claim's PDF here (which also
- * renames the PDF and its receipts folder in Drive and updates the Sheet row).
+ * renames the PDF to {ref}-{holder}-{amount}-{status}.pdf, renames its receipts folder, and updates the Sheet row).
  *
  *   npm run renumber -w @jep/netlify -- --dry-run     # show old -> new, change nothing
  *   npm run renumber -w @jep/netlify                  # do it
@@ -21,7 +21,7 @@ const dryRun = process.argv.includes('--dry-run');
 const deps = getDeps();
 const snap = await deps.db.collection(COL.claims).get();
 const claims = snap.docs.map((d) => ({ id: d.id, ...(d.data() as ClaimDoc) }));
-const plan = planRenumber(claims.map((c) => ({ id: c.id, submittedAt: c.submittedAt.toDate(), status: c.status, refNo: c.refNo })));
+const plan = planRenumber(claims.map((c) => ({ id: c.id, submittedAt: c.submittedAt.toDate(), refNo: c.refNo })));
 
 for (const c of plan.changes) console.log(`${c.from.padEnd(28)} -> ${c.refNo}   (${c.id})`);
 console.log(`counters/claimSeq -> next ${plan.nextCounter}`);
@@ -32,7 +32,7 @@ if (dryRun) {
 
 const now = Timestamp.fromDate(deps.now());
 const batch = deps.db.batch();
-for (const c of plan.changes) batch.update(deps.db.collection(COL.claims).doc(c.id), { refBase: c.refBase, refNo: c.refNo, updatedAt: now });
+for (const c of plan.changes) batch.update(deps.db.collection(COL.claims).doc(c.id), { refNo: c.refNo, updatedAt: now });
 batch.set(claimSeqRef(deps.db), { next: plan.nextCounter }, { merge: true });
 await batch.commit();
 console.log(`✔ Renumbered ${plan.changes.length} claims.`);

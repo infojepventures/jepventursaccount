@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import {
-  isValidClaimId, isValidYmd, PDF_STUCK_AFTER_MS, refNoFor,
+  isValidClaimId, isValidYmd, PDF_STUCK_AFTER_MS,
   type ClaimDoc, type ClaimIdRequest, type ClaimStatus, type HistoryAction, type MarkPaidRequest, type StatusResponse,
 } from '@jep/shared';
 import { assertAdmin, type Actor } from '../actor';
@@ -9,7 +9,7 @@ import type { Deps } from '../deps';
 import { fail } from '../errors';
 import type { Transaction } from 'firebase-admin/firestore';
 import { claimRef } from '../firestore';
-import { refBaseOfClaim } from '../refNumbers';
+import { refNoOfClaim } from '../refNumbers';
 import { notifyClaimEvent } from './notify';
 import { startPdf } from './pdfTrigger';
 import { syncClaimToSheet } from './sheetSync';
@@ -32,16 +32,15 @@ async function transition(
 }
 
 /**
- * The fields for moving a claim to `status`: the ref no. suffix follows it, and the PDF (which shows the ref
- * no.) is regenerated. Call from inside `transition` after the status checks.
+ * The fields for moving a claim to `status`: the PDF is regenerated (its file name ends in the status), and a
+ * claim from before numbering-on-submit gets its number. Call from inside `transition` after the status checks.
  */
 async function statusChange(deps: Deps, tx: Transaction, cur: ClaimDoc, now: Timestamp, status: ClaimStatus, requestId: string) {
-  const number = await refBaseOfClaim(tx, deps.db, cur);
+  const number = await refNoOfClaim(tx, deps.db, cur);
   number.commit();
   return {
     status,
-    refBase: number.refBase,
-    refNo: refNoFor(number.refBase, status),
+    refNo: number.refNo,
     pdf: { ...cur.pdf, status: 'generating', requestId, requestedAt: now, error: null },
   };
 }

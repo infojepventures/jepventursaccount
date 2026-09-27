@@ -1,4 +1,4 @@
-import { displayRefNo, formatRM, type ClaimDoc } from '@jep/shared';
+import { formatRM, type ClaimDoc } from '@jep/shared';
 import type { Deps } from '../deps';
 import { COL, getClaim } from '../firestore';
 import type { PushMessage } from '../push';
@@ -14,11 +14,11 @@ export function buildMessage(event: ClaimEvent, claim: ClaimDoc, claimId: string
     case 'resubmitted':
       return { title: 'Claim resubmitted', body: `${claim.applicant.name} resubmitted ${rm}`, data };
     case 'approved':
-      return { title: 'Claim approved', body: `${displayRefNo(claim)} (${rm}) was approved`, data };
+      return { title: 'Claim approved', body: `${claim.refNo} (${rm}) was approved`, data };
     case 'rejected':
       return { title: 'Claim rejected', body: `Reason: ${claim.review?.reason ?? ''}`, data };
     case 'paid':
-      return { title: 'Claim paid', body: `${displayRefNo(claim)} (${rm}) has been paid`, data };
+      return { title: 'Claim paid', body: `${claim.refNo} (${rm}) has been paid`, data };
   }
 }
 

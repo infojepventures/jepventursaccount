@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import {
-  isAllowedMime, refNoFor, isValidClaimId, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS, MIN_ATTACHMENTS,
+  isAllowedMime, isValidClaimId, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS, MIN_ATTACHMENTS,
   sumCents, validateBank, validateItems,
   type Attachment, type BankDetails, type ClaimDoc, type ClaimItem, type HistoryAction, type HistoryEntry,
   type SubmitClaimRequest, type SubmitClaimResponse,
@@ -10,7 +10,7 @@ import { assertCan } from '../claimAccess';
 import type { Deps } from '../deps';
 import { fail, isAlreadyExists } from '../errors';
 import { claimRef, COL, getClaim, userRef } from '../firestore';
-import { refBaseOfClaim, takeRefBase } from '../refNumbers';
+import { refNoOfClaim, takeRefNo } from '../refNumbers';
 import { notifyClaimEvent } from './notify';
 import { startPdf } from './pdfTrigger';
 import { syncClaimToSheet } from './sheetSync';
@@ -88,12 +88,11 @@ export async function submitClaim(deps: Deps, actor: Actor, req: SubmitClaimRequ
     const removed = await deps.db.runTransaction(async (tx) => {
       const cur = (await tx.get(ref)).data() as ClaimDoc;
       if (cur.status !== 'rejected') throw fail.statusChanged();
-      const number = await refBaseOfClaim(tx, deps.db, cur);
+      const number = await refNoOfClaim(tx, deps.db, cur);
       number.commit();
       tx.update(ref, {
         status: 'submitted',
-        refBase: number.refBase,
-        refNo: refNoFor(number.refBase, 'submitted'),
+        refNo: number.refNo,
         applicant: { uid: actor.uid, name: actor.name, position: actor.position },
         items,
         totalCents,
@@ -112,7 +111,7 @@ export async function submitClaim(deps: Deps, actor: Actor, req: SubmitClaimRequ
       await deps.drive.trash(a.driveFileId).catch((e) => console.error('[submitClaim] trash failed', a.driveFileId, e));
     }
   } else {
-    // refNo/refBase are filled in inside the create transaction, which takes the claim's number.
+    // refNo is filled in inside the create transaction, which takes the claim's number.
     const doc: ClaimDoc = {
       refNo: '',
       status: 'submitted',
@@ -142,9 +141,9 @@ export async function submitClaim(deps: Deps, actor: Actor, req: SubmitClaimRequ
           throw fail.invalid('These receipts were cleared after 24 hours without submitting. Please remove them and add them again.');
         }
         // The number is taken with the create: a failed or raced create consumes none.
-        const number = await takeRefBase(tx, deps.db, deps.now());
+        const number = await takeRefNo(tx, deps.db, deps.now());
         number.commit();
-        tx.create(ref, { ...doc, refBase: number.refBase, refNo: refNoFor(number.refBase, 'submitted') });
+        tx.create(ref, { ...doc, refNo: number.refNo });
       });
     } catch (e) {
       if (!isAlreadyExists(e)) throw e;

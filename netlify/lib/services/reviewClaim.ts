@@ -1,13 +1,13 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import {
-  isValidClaimId, refNoFor,
+  isValidClaimId,
   type ClaimDoc, type ReviewClaimRequest, type ReviewClaimResponse, type ReviewInfo,
 } from '@jep/shared';
 import { assertAdmin, type Actor } from '../actor';
 import type { Deps } from '../deps';
 import { fail } from '../errors';
 import { claimRef } from '../firestore';
-import { refBaseOfClaim } from '../refNumbers';
+import { refNoOfClaim } from '../refNumbers';
 import { notifyClaimEvent } from './notify';
 import { startPdf } from './pdfTrigger';
 import { syncClaimToSheet } from './sheetSync';
@@ -37,16 +37,16 @@ export async function reviewClaim(deps: Deps, actor: Actor, req: ReviewClaimRequ
       reason: req.decision === 'reject' ? reason : null,
     };
 
-    // The number was taken at submission; only the suffix changes (older claims are numbered now).
-    const number = await refBaseOfClaim(tx, deps.db, cur);
+    // The number was taken at submission (older claims are numbered now). The PDF is regenerated either way:
+    // its file name ends in the status, and approval adds the approver's details.
+    const number = await refNoOfClaim(tx, deps.db, cur);
     number.commit();
+    const refNo = number.refNo;
     const pdf = { ...cur.pdf, status: 'generating', requestId, requestedAt: now, error: null };
 
     if (req.decision === 'approve') {
-      const refNo = refNoFor(number.refBase, 'approved');
       tx.update(ref, {
         status: 'approved',
-        refBase: number.refBase,
         refNo,
         review,
         pdf,
@@ -56,10 +56,8 @@ export async function reviewClaim(deps: Deps, actor: Actor, req: ReviewClaimRequ
       return { status: 'approved' as const, refNo };
     }
 
-    const refNo = refNoFor(number.refBase, 'rejected');
     tx.update(ref, {
       status: 'rejected',
-      refBase: number.refBase,
       refNo,
       review,
       pdf,
@@ -71,7 +69,6 @@ export async function reviewClaim(deps: Deps, actor: Actor, req: ReviewClaimRequ
 
   await syncClaimToSheet(deps, req.claimId);
   await notifyClaimEvent(deps, result.status === 'approved' ? 'approved' : 'rejected', req.claimId, actor.uid);
-  // The PDF shows the ref no., so it is regenerated whenever the suffix changes.
   await startPdf(deps, req.claimId, requestId);
   return result;
 }
