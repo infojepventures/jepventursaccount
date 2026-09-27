@@ -2,12 +2,13 @@ import * as Application from 'expo-application';
 import * as Updates from 'expo-updates';
 import { doc, getDoc } from 'firebase/firestore';
 import { useState } from 'react';
-import { Alert, Linking, StyleSheet, Text } from 'react-native';
+import { Alert, StyleSheet, Text } from 'react-native';
 import { db } from '../lib/firebase';
 import { Button } from '../ui/Button';
 import { Section } from '../ui/Section';
 import { colors } from '../ui/theme';
 import { checkForUpdates } from './checkForUpdates';
+import { progressLabel, useApkUpdate } from './useApkUpdate';
 
 function versionLabel(): string {
   const base = `Version ${Application.nativeApplicationVersion ?? '?'} (build ${Application.nativeBuildVersion ?? '?'})`;
@@ -21,6 +22,7 @@ function versionLabel(): string {
 /** Profile → App: shows the running version and checks for an over-the-air update or a required new APK. */
 export function AppVersionSection() {
   const [checking, setChecking] = useState(false);
+  const apk = useApkUpdate();
 
   const onCheck = async () => {
     setChecking(true);
@@ -33,9 +35,9 @@ export function AppVersionSection() {
         loadNativeConfig: async () => (await getDoc(doc(db, 'appConfig', 'android'))).data(),
       });
       if (result.kind === 'native') {
-        Alert.alert('New version available', result.update.message ?? 'Download and install the new version of JEP Claims.', [
+        Alert.alert('New version available', result.update.message ?? 'Install the new version of JEP Claims now?', [
           { text: 'Later', style: 'cancel' },
-          { text: 'Download', onPress: () => void Linking.openURL(result.update.apkUrl) },
+          { text: 'Update', onPress: () => void apk.install(result.update.apkUrl) },
         ]);
       } else if (result.kind === 'otaReady') {
         Alert.alert('Update downloaded', 'Restart now to use the latest version?', [
@@ -55,7 +57,14 @@ export function AppVersionSection() {
   return (
     <Section title="App">
       <Text style={styles.version}>{versionLabel()}</Text>
-      <Button title="Check for updates" variant="secondary" icon="refresh-outline" loading={checking} onPress={() => void onCheck()} />
+      <Button
+        title={apk.progress !== null ? progressLabel(apk.progress) : 'Check for updates'}
+        variant="secondary"
+        icon="refresh-outline"
+        loading={checking}
+        disabled={apk.progress !== null}
+        onPress={() => void onCheck()}
+      />
     </Section>
   );
 }
