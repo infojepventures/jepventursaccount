@@ -122,7 +122,7 @@ describe('notifyClaimEvent via reviewClaim / markPaid', () => {
     await reviewClaim(t.deps, boss, { claimId: a.claimId, decision: 'approve' });
     expect(t.push.calls).toHaveLength(1);
     expect(t.push.calls[0]!.tokens).toEqual(['alice-tok']);
-    expect(t.push.calls[0]!.msg).toMatchObject({ title: 'Claim approved', body: 'PR-JEP-202609-001 (RM 150.00) was approved' });
+    expect(t.push.calls[0]!.msg).toMatchObject({ title: 'Claim approved', body: 'PR-JEP-202609-0001 (RM 150.00) was approved' });
 
     const b = await submitNewClaim(t, alice);
     t.push.calls.length = 0;
@@ -137,7 +137,7 @@ describe('notifyClaimEvent via reviewClaim / markPaid', () => {
     await markPaid(t.deps, boss, { claimId: a.claimId, paidDate: '2026-09-27', reference: 'IBG' });
     expect(t.push.calls).toHaveLength(1);
     expect(t.push.calls[0]!.tokens).toEqual(['alice-tok']);
-    expect(t.push.calls[0]!.msg).toMatchObject({ title: 'Claim paid', body: 'PR-JEP-202609-001 (RM 150.00) has been paid' });
+    expect(t.push.calls[0]!.msg).toMatchObject({ title: 'Claim paid', body: 'PR-JEP-202609-0001 (RM 150.00) has been paid' });
   });
 
   it('sends nothing when the admin approves their own claim', async () => {

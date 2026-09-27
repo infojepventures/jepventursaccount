@@ -12,7 +12,7 @@ export interface ItemTab {
   hasError: boolean;
 }
 
-/** Horizontally scrolling tabs, one per claim item, plus a trailing "+" tab that adds an item. */
+/** Horizontally scrolling tabs, one per claim item, plus a "+" button pinned at the right that adds an item. */
 export function ItemTabs(p: {
   tabs: ItemTab[];
   activeKey: string;
@@ -29,41 +29,46 @@ export function ItemTabs(p: {
   }, [p.activeKey]);
 
   return (
-    <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
-      {p.tabs.map((t, i) => {
-        const active = t.key === p.activeKey;
-        return (
-          <Pressable
-            key={t.key}
-            onLayout={(e) => offsets.current.set(t.key, e.nativeEvent.layout.x)}
-            onPress={() => p.onSelect(t.key)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={`Item ${i + 1}, ${t.amountLabel}, ${t.receiptCount} receipts${t.hasError ? ', needs attention' : ''}`}
-            style={[styles.tab, active && styles.tabActive, t.hasError && !active && styles.tabError]}
-          >
-            <View style={styles.tabHead}>
-              <Text style={[styles.tabTitle, active && styles.textActive]}>Item {i + 1}</Text>
-              {t.hasError ? <View style={styles.errorDot} /> : null}
-            </View>
-            <Text style={[styles.tabAmount, active && styles.textActive]} numberOfLines={1}>{t.amountLabel}</Text>
-            <View style={styles.tabMeta}>
-              <Ionicons name={t.busy ? 'sync-outline' : 'receipt-outline'} size={11} color={active ? colors.primaryText : colors.muted} />
-              <Text style={[styles.tabMetaText, active && styles.textActive]}>{t.receiptCount}</Text>
-            </View>
-          </Pressable>
-        );
-      })}
+    <View style={styles.row}>
+      <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} style={styles.scroll} contentContainerStyle={styles.strip}>
+        {p.tabs.map((t, i) => {
+          const active = t.key === p.activeKey;
+          return (
+            <Pressable
+              key={t.key}
+              onLayout={(e) => offsets.current.set(t.key, e.nativeEvent.layout.x)}
+              onPress={() => p.onSelect(t.key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`Item ${i + 1}, ${t.amountLabel}, ${t.receiptCount} receipts${t.hasError ? ', needs attention' : ''}`}
+              style={[styles.tab, active && styles.tabActive, t.hasError && !active && styles.tabError]}
+            >
+              <View style={styles.tabHead}>
+                <Text style={[styles.tabTitle, active && styles.textActive]}>Item {i + 1}</Text>
+                {t.hasError ? <View style={styles.errorDot} /> : null}
+              </View>
+              <Text style={[styles.tabAmount, active && styles.textActive]} numberOfLines={1}>{t.amountLabel}</Text>
+              <View style={styles.tabMeta}>
+                <Ionicons name={t.busy ? 'sync-outline' : 'receipt-outline'} size={11} color={active ? colors.primaryText : colors.muted} />
+                <Text style={[styles.tabMetaText, active && styles.textActive]}>{t.receiptCount}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      {/* Pinned outside the scroll so it stays in reach however many items there are. */}
       {p.onAdd ? (
         <Pressable onPress={p.onAdd} accessibilityRole="button" accessibilityLabel="Add item" style={[styles.tab, styles.addTab]}>
           <Ionicons name="add" size={22} color={colors.text} />
         </Pressable>
       ) : null}
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'stretch', gap: space(2) },
+  scroll: { flex: 1 },
   strip: { gap: space(2), paddingVertical: 2 },
   tab: {
     minWidth: 88,

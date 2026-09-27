@@ -7,7 +7,6 @@ import { extractText } from '../pdfText';
 
 const input: ClaimPdfInput = {
   refNo: 'PR-JEP-202609-draft',
-  isDraft: true,
   applicant: { name: '陈大文 Tan Ah Kow', position: 'Operations Executive' },
   date: '2026-09-25',
   items: [
@@ -43,7 +42,7 @@ describe('buildClaimPdf', () => {
     const text = await extractText(bytes, 1);
     expect(text).toContain('PAYMENT REQUEST');
     expect(text).toContain('REF: PR-JEP-202609-draft');
-    expect(text).toContain('DRAFT');
+    expect(text).not.toContain('PENDING APPROVAL'); // no separate draft mark: the ref suffix says it
     expect(text).toContain('陈大文');
     expect(text).toContain('停车费');
     expect(text).toContain('Doc No.');
@@ -54,13 +53,13 @@ describe('buildClaimPdf', () => {
 
   it('shows the approval block and no draft marker on the final version', async () => {
     const bytes = await buildClaimPdf(
-      { ...input, refNo: 'PR-JEP-202610-006', isDraft: false, approval: { byName: 'Boss', date: '2026-10-01' } },
+      { ...input, refNo: 'PR-JEP-202610-006', approval: { byName: 'Boss', date: '2026-10-01' } },
       [],
       await loadPdfAssets(),
     );
     const text = await extractText(bytes, 1);
     expect(text).toContain('REF: PR-JEP-202610-006');
-    expect(text).not.toContain('DRAFT');
+    expect(text).not.toContain('PENDING APPROVAL');
     expect(text).toContain('Approved by');
     expect(text).toContain('Boss');
   });

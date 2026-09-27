@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { getClaim } from '../../lib/firestore';
 import { generatePdf } from '../../lib/services/generatePdf';
 import { reviewClaim } from '../../lib/services/reviewClaim';
+import { extractText } from '../pdfText';
 import { jpgFile, makeTestDeps, pdfBytes, resetEmulators, seedActor, seedCounter, submitNewClaim } from './helpers';
 
 beforeEach(resetEmulators);
@@ -25,7 +26,7 @@ describe('generatePdf', () => {
 
     const c = (await getClaim(t.deps.db, claimId))!;
     expect(c.pdf.status).toBe('ready');
-    expect(c.pdf.fileName).toBe('PR-JEP-202609-draft-Tan Ah Kow-150.00.pdf');
+    expect(c.pdf.fileName).toBe('PR-JEP-202609-0001-Tan Ah Kow-150.00-Pending.pdf');
     const file = t.drive.files.get(c.pdf.driveFileId!)!;
     expect(file.name).toBe(c.pdf.fileName);
     expect(t.drive.folderPath(file.parents[0]!)).toBe('JEP Claims/2026');
@@ -34,7 +35,7 @@ describe('generatePdf', () => {
     expect(t.shortener.calls).toEqual([`https://drive.google.com/file/d/${c.pdf.driveFileId}/view`]);
     expect(c.pdf.shortUrl).toBe('https://tinyurl.com/t1');
     expect(t.sheets.rows.get(claimId)?.[16]).toBe('https://tinyurl.com/t1');
-    expect(t.drive.files.get(c.attachmentsFolderId)!.name).toBe('PR-JEP-202609-draft-Tan Ah Kow-150.00');
+    expect(t.drive.files.get(c.attachmentsFolderId)!.name).toBe('PR-JEP-202609-0001-Tan Ah Kow-150.00-Pending');
   });
 
   it('replaces the draft with the numbered final PDF after approval', async () => {
@@ -47,10 +48,10 @@ describe('generatePdf', () => {
     expect(await generatePdf(t.deps, claimId, t.triggered[1]!.requestId)).toBe('done');
 
     const c = (await getClaim(t.deps.db, claimId))!;
-    expect(c.pdf.fileName).toBe('PR-JEP-202609-001-Tan Ah Kow-150.00.pdf');
+    expect(c.pdf.fileName).toBe('PR-JEP-202609-0001-Tan Ah Kow-150.00-Pending.pdf');
     expect(t.drive.files.get(draftId)!.trashed).toBe(true);
-    expect(t.drive.livePdfs().map((f) => f.name)).toEqual(['PR-JEP-202609-001-Tan Ah Kow-150.00.pdf']);
-    expect(t.drive.files.get(c.attachmentsFolderId)!.name).toBe('PR-JEP-202609-001-Tan Ah Kow-150.00');
+    expect(t.drive.livePdfs().map((f) => f.name)).toEqual(['PR-JEP-202609-0001-Tan Ah Kow-150.00-Pending.pdf']);
+    expect(t.drive.files.get(c.attachmentsFolderId)!.name).toBe('PR-JEP-202609-0001-Tan Ah Kow-150.00-Pending');
   });
 
   it('still returns done when the attachments folder rename fails', async () => {
@@ -78,6 +79,17 @@ describe('generatePdf', () => {
     const { claimId: second } = await submitNewClaim(t, alice);
     expect(await generatePdf(t.deps, second, t.triggered[1]!.requestId)).toBe('done');
     expect((await getClaim(t.deps.db, second))!.pdf.shortUrl).toBeNull();
+  });
+
+  it('prints the ref number on the PDF and ends the file name with the status', async () => {
+    const { t, alice } = await setup();
+    const { claimId } = await submitNewClaim(t, alice);
+    expect(await generatePdf(t.deps, claimId, t.triggered[0]!.requestId)).toBe('done');
+    const c = (await getClaim(t.deps.db, claimId))!;
+    expect(c.pdf.fileName).toBe('PR-JEP-202609-0001-Tan Ah Kow-150.00-Pending.pdf');
+    const text = await extractText(t.drive.files.get(c.pdf.driveFileId!)!.data, 1);
+    expect(text).toContain('REF: PR-JEP-202609-0001');
+    expect(text).not.toContain('Pending');
   });
 
   it('skips stale requests before doing any work', async () => {

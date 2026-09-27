@@ -1,21 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { draftRefNo, finalRefNo, isDraftRefNo, refNoYear } from '../src/refNo';
+import { claimRefNo, isNumberedRefNo, refNoYear } from '../src/refNo';
 
 describe('refNo', () => {
-  it('builds the draft ref from the submission month', () => {
-    expect(draftRefNo(new Date('2026-09-25T04:00:00Z'))).toBe('PR-JEP-202609-draft');
+  it('numbers a claim by its submission month (Malaysia time) and a 4-digit global sequence', () => {
+    expect(claimRefNo(new Date('2026-09-25T04:00:00Z'), 5)).toBe('PR-JEP-202609-0005');
+    // 30 Sep 23:30 in Kuala Lumpur is still September there.
+    expect(claimRefNo(new Date('2026-09-30T15:30:00Z'), 12)).toBe('PR-JEP-202609-0012');
+    expect(claimRefNo(new Date('2026-10-01T01:00:00Z'), 12345)).toBe('PR-JEP-202610-12345');
+    expect(() => claimRefNo(new Date(), 0)).toThrow();
+    expect(() => claimRefNo(new Date(), 1.5)).toThrow();
   });
 
-  it('builds the final ref from the approval month and global sequence', () => {
-    expect(finalRefNo(new Date('2026-10-01T01:00:00Z'), 6)).toBe('PR-JEP-202610-006');
-    expect(finalRefNo(new Date('2026-10-01T01:00:00Z'), 1234)).toBe('PR-JEP-202610-1234');
-    expect(() => finalRefNo(new Date(), 0)).toThrow();
+  it('tells numbered refs from older formats', () => {
+    expect(isNumberedRefNo('PR-JEP-202609-0005')).toBe(true);
+    expect(isNumberedRefNo('PR-JEP-202609-draft')).toBe(false);
+    expect(isNumberedRefNo('PR-JEP-202609-001')).toBe(false);
   });
 
-  it('detects drafts and extracts the year', () => {
-    expect(isDraftRefNo('PR-JEP-202609-draft')).toBe(true);
-    expect(isDraftRefNo('PR-JEP-202609-005')).toBe(false);
-    expect(refNoYear('PR-JEP-202610-006')).toBe('2026');
+  it('extracts the year', () => {
+    expect(refNoYear('PR-JEP-202610-0006')).toBe('2026');
     expect(refNoYear('PR-JEP-202701-draft')).toBe('2027');
     expect(() => refNoYear('nope')).toThrow();
   });

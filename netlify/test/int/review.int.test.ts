@@ -17,34 +17,46 @@ async function setup(next = 1) {
 }
 
 describe('reviewClaim', () => {
-  it('assigns global sequential numbers using the approval month', async () => {
+  it('numbers claims when submitted (submission month, 4 digits) and keeps the number on review', async () => {
     const { t, alice, boss } = await setup(5);
     const a = await submitNewClaim(t, alice);
     const b = await submitNewClaim(t, alice);
-    t.setNow(new Date('2026-10-01T02:00:00Z'));
+    expect((await getClaim(t.deps.db, a.claimId))!.refNo).toBe('PR-JEP-202609-0005');
+    expect((await getClaim(t.deps.db, b.claimId))!.refNo).toBe('PR-JEP-202609-0006');
+    expect((await t.deps.db.collection(COL.counters).doc(CLAIM_SEQ_DOC).get()).data()).toEqual({ next: 7 });
 
+    t.setNow(new Date('2026-10-01T02:00:00Z')); // approved next month: the ref keeps the submission month
     expect(await reviewClaim(t.deps, boss, { claimId: a.claimId, decision: 'approve' })).toEqual({
-      status: 'approved', refNo: 'PR-JEP-202610-005',
+      status: 'approved', refNo: 'PR-JEP-202609-0005',
     });
-    expect((await reviewClaim(t.deps, boss, { claimId: b.claimId, decision: 'approve' })).refNo).toBe('PR-JEP-202610-006');
     expect((await t.deps.db.collection(COL.counters).doc(CLAIM_SEQ_DOC).get()).data()).toEqual({ next: 7 });
 
     const c = (await getClaim(t.deps.db, a.claimId))!;
     expect(c.status).toBe('approved');
     expect(c.review).toMatchObject({ byUid: 'boss', byName: 'User boss', reason: null });
     expect(c.pdf.status).toBe('generating');
-    expect(t.triggered.at(-2)).toEqual({ claimId: a.claimId, requestId: c.pdf.requestId });
-    expect(t.sheets.rows.get(a.claimId)?.[1]).toBe('PR-JEP-202610-005');
+    expect(t.triggered.at(-1)).toEqual({ claimId: a.claimId, requestId: c.pdf.requestId });
+    expect(t.sheets.rows.get(a.claimId)?.[1]).toBe('PR-JEP-202609-0005');
   });
 
-  it('does not consume numbers for rejected claims', async () => {
+  it('keeps the number on reject and regenerates the PDF (its file name ends in Rejected)', async () => {
     const { t, alice, boss } = await setup();
     const a = await submitNewClaim(t, alice);
-    const b = await submitNewClaim(t, alice);
+    const before = t.triggered.length;
     const rej = await reviewClaim(t.deps, boss, { claimId: a.claimId, decision: 'reject', reason: 'No receipt' });
-    expect(rej).toEqual({ status: 'rejected', refNo: 'PR-JEP-202609-draft' });
-    expect((await reviewClaim(t.deps, boss, { claimId: b.claimId, decision: 'approve' })).refNo).toBe('PR-JEP-202609-001');
-    expect((await getClaim(t.deps.db, a.claimId))!.review?.reason).toBe('No receipt');
+    expect(rej).toEqual({ status: 'rejected', refNo: 'PR-JEP-202609-0001' });
+    const c = (await getClaim(t.deps.db, a.claimId))!;
+    expect(c.review?.reason).toBe('No receipt');
+    expect(c.pdf.status).toBe('generating');
+    expect(t.triggered).toHaveLength(before + 1);
+  });
+
+  it('numbers a claim from before numbering-on-submit when it is reviewed, by its submission month', async () => {
+    const { t, alice, boss } = await setup(9);
+    const { claimId } = await submitNewClaim(t, alice);
+    await t.deps.db.collection(COL.claims).doc(claimId).update({ refNo: 'PR-JEP-202609-draft' });
+    t.setNow(new Date('2026-10-01T02:00:00Z'));
+    expect((await reviewClaim(t.deps, boss, { claimId, decision: 'approve' })).refNo).toBe('PR-JEP-202609-0010');
   });
 
   it('requires a reason to reject, and admin rights', async () => {
@@ -61,20 +73,18 @@ describe('reviewClaim', () => {
     await expect(reviewClaim(t.deps, boss, { claimId, decision: 'approve' })).rejects.toMatchObject({ code: 'STATUS_CHANGED' });
   });
 
-  it('gives concurrent approvals unique consecutive numbers', async () => {
-    const { t, alice, boss } = await setup();
-    const ids: string[] = [];
-    for (let i = 0; i < 5; i++) ids.push((await submitNewClaim(t, alice)).claimId);
-    const results = await Promise.all(ids.map((claimId) => reviewClaim(t.deps, boss, { claimId, decision: 'approve' })));
-    expect(results.map((r) => r.refNo).sort()).toEqual([1, 2, 3, 4, 5].map((n) => `PR-JEP-202609-00${n}`));
+  it('gives concurrent submissions unique consecutive numbers', async () => {
+    const { t, alice } = await setup();
+    const ids = await Promise.all([0, 1, 2, 3, 4].map(() => submitNewClaim(t, alice)));
+    const refs = await Promise.all(ids.map(async ({ claimId }) => (await getClaim(t.deps.db, claimId))!.refNo));
+    expect(refs.sort()).toEqual([1, 2, 3, 4, 5].map((n) => `PR-JEP-202609-000${n}`));
   });
 
-  it('fails clearly when the counter is not initialised', async () => {
+  it('starts numbering at 1 when the counter does not exist yet', async () => {
     const t = makeTestDeps();
     const alice = await seedActor(t.deps, 'alice');
-    const boss = await seedActor(t.deps, 'boss', { role: 'admin' });
     const { claimId } = await submitNewClaim(t, alice);
-    await expect(reviewClaim(t.deps, boss, { claimId, decision: 'approve' })).rejects.toThrow(/claimSeq/);
+    expect((await getClaim(t.deps.db, claimId))!.refNo).toBe('PR-JEP-202609-0001');
   });
 });
 
@@ -95,13 +105,13 @@ describe('reject then resubmit', () => {
 
     const c = (await getClaim(t.deps.db, claimId))!;
     expect(c.status).toBe('submitted');
-    expect(c.refNo).toBe('PR-JEP-202609-draft');
+    expect(c.refNo).toBe('PR-JEP-202609-0001'); // same number
     expect(c.totalCents).toBe(500);
     expect(c.review).toBeNull();
     expect(c.resubmittedAt?.toDate().toISOString()).toBe('2026-09-26T04:00:00.000Z');
     expect(c.attachments.map((a) => a.driveFileId)).toEqual([attachmentIds[0], added]);
     expect(c.history.map((h) => h.action)).toEqual(['submit', 'reject', 'resubmit']);
     expect(t.drive.files.get(attachmentIds[1]!)!.trashed).toBe(true);
-    expect(t.triggered).toHaveLength(2);
+    expect(t.triggered).toHaveLength(3); // submit, reject, resubmit
   });
 });

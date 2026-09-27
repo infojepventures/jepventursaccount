@@ -16,7 +16,7 @@ describe('submitClaim (new)', () => {
     const { claimId, attachmentIds } = await submitNewClaim(t, alice);
 
     const c = (await getClaim(t.deps.db, claimId))!;
-    expect(c.refNo).toBe('PR-JEP-202609-draft');
+    expect(c.refNo).toBe('PR-JEP-202609-0001');
     expect(c.status).toBe('submitted');
     expect(c.totalCents).toBe(15000);
     expect(c.applicant).toEqual({ uid: 'alice', name: 'User alice', position: 'Executive' });
@@ -27,7 +27,7 @@ describe('submitClaim (new)', () => {
     expect(c.history.map((h) => h.action)).toEqual(['submit']);
     expect(c.sheetSynced).toBe(true);
     expect(t.drive.folderPath(c.attachmentsFolderId)).toBe(`JEP Claims/2026/_attachments/${claimId}`);
-    expect(t.sheets.rows.get(claimId)?.[1]).toBe('PR-JEP-202609-draft');
+    expect(t.sheets.rows.get(claimId)?.[1]).toBe('PR-JEP-202609-0001');
     expect(t.triggered).toEqual([{ claimId, requestId: 'req_1' }]);
   });
 

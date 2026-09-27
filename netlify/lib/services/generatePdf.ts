@@ -32,7 +32,7 @@ export async function generatePdf(
     const files: PdfAttachment[] = [];
     for (const a of claim.attachments) files.push({ mimeType: a.mimeType, data: await deps.drive.download(a.driveFileId) });
     const bytes = await buildClaimPdf(toPdfInput(claim, deps.now()), files, assets);
-    const fileName = claimPdfFileName(claim.refNo, claim.payment.accountHolder, claim.totalCents);
+    const fileName = claimPdfFileName(claim.refNo, claim.payment.accountHolder, claim.totalCents, claim.status);
     const yearFolder = await deps.drive.findOrCreateFolder(deps.rootFolderId, refNoYear(claim.refNo));
     uploadedId = (await deps.drive.upload({ name: fileName, mimeType: 'application/pdf', parentId: yearFolder, data: bytes })).id;
     const newId = uploadedId;

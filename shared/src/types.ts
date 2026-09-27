@@ -81,6 +81,7 @@ export interface PaidInfo {
 }
 
 export interface ClaimDoc {
+  /** PR-JEP-{submission yyyyMM}-{NNNN}, fixed once first submitted (older claims: PR-JEP-yyyyMM-draft / -001). */
   refNo: string;
   status: ClaimStatus;
   applicant: { uid: string; name: string; position: string };
