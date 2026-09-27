@@ -59,5 +59,11 @@ service cloud.firestore {
     match /pushTokens/{t} {
       allow read, write: if false;
     }
+
+    // App version info for the in-app "new version available" prompt; edited in the Firebase console.
+    match /appConfig/{platform} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
   }
 }

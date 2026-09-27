@@ -4,6 +4,7 @@ import { ProfileForm } from '../../components/ProfileForm';
 import { Button } from '../../ui/Button';
 import { Screen } from '../../ui/Screen';
 import { colors } from '../../ui/theme';
+import { AppVersionSection } from '../../updates/AppVersionSection';
 
 export default function ProfileTab() {
   const { user, signOut } = useAuth();
@@ -13,6 +14,7 @@ export default function ProfileTab() {
         Signed in as {user?.email} · {user?.role === 'admin' ? 'Admin' : 'Member'}
       </Text>
       <ProfileForm submitLabel="Save profile" onSaved={() => Alert.alert('Saved', 'Your profile has been updated.')} />
+      <AppVersionSection />
       <Button title="Sign out" variant="danger" icon="log-out-outline" onPress={() => void signOut()} />
     </Screen>
   );
