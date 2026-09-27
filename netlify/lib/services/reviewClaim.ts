@@ -1,12 +1,13 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import {
-  finalRefNo, isValidClaimId,
+  isValidClaimId, refNoFor,
   type ClaimDoc, type ReviewClaimRequest, type ReviewClaimResponse, type ReviewInfo,
 } from '@jep/shared';
 import { assertAdmin, type Actor } from '../actor';
 import type { Deps } from '../deps';
 import { fail } from '../errors';
-import { CLAIM_SEQ_DOC, claimRef, COL } from '../firestore';
+import { claimRef } from '../firestore';
+import { refBaseOfClaim } from '../refNumbers';
 import { notifyClaimEvent } from './notify';
 import { startPdf } from './pdfTrigger';
 import { syncClaimToSheet } from './sheetSync';
@@ -20,7 +21,6 @@ export async function reviewClaim(deps: Deps, actor: Actor, req: ReviewClaimRequ
   if (reason.length > 500) throw fail.invalid('Reason is too long (max 500 characters)');
 
   const ref = claimRef(deps.db, req.claimId);
-  const counterRef = deps.db.collection(COL.counters).doc(CLAIM_SEQ_DOC);
   const nowDate = deps.now();
   const now = Timestamp.fromDate(nowDate);
   const requestId = deps.newId();
@@ -37,34 +37,41 @@ export async function reviewClaim(deps: Deps, actor: Actor, req: ReviewClaimRequ
       reason: req.decision === 'reject' ? reason : null,
     };
 
+    // The number was taken at submission; only the suffix changes (older claims are numbered now).
+    const number = await refBaseOfClaim(tx, deps.db, cur);
+    number.commit();
+    const pdf = { ...cur.pdf, status: 'generating', requestId, requestedAt: now, error: null };
+
     if (req.decision === 'approve') {
-      const counter = await tx.get(counterRef);
-      const seq = (counter.data() as { next?: unknown } | undefined)?.next;
-      if (typeof seq !== 'number') throw new Error('counters/claimSeq is not initialised; run the setup script');
-      const refNo = finalRefNo(nowDate, seq);
-      tx.update(counterRef, { next: seq + 1 });
+      const refNo = refNoFor(number.refBase, 'approved');
       tx.update(ref, {
         status: 'approved',
+        refBase: number.refBase,
         refNo,
         review,
-        pdf: { ...cur.pdf, status: 'generating', requestId, requestedAt: now, error: null },
+        pdf,
         history: [...cur.history, { action: 'approve', byUid: actor.uid, byName: actor.name, at: now, note: refNo }],
         updatedAt: now,
       });
       return { status: 'approved' as const, refNo };
     }
 
+    const refNo = refNoFor(number.refBase, 'rejected');
     tx.update(ref, {
       status: 'rejected',
+      refBase: number.refBase,
+      refNo,
       review,
+      pdf,
       history: [...cur.history, { action: 'reject', byUid: actor.uid, byName: actor.name, at: now, note: reason }],
       updatedAt: now,
     });
-    return { status: 'rejected' as const, refNo: cur.refNo };
+    return { status: 'rejected' as const, refNo };
   });
 
   await syncClaimToSheet(deps, req.claimId);
   await notifyClaimEvent(deps, result.status === 'approved' ? 'approved' : 'rejected', req.claimId, actor.uid);
-  if (result.status === 'approved') await startPdf(deps, req.claimId, requestId);
+  // The PDF shows the ref no., so it is regenerated whenever the suffix changes.
+  await startPdf(deps, req.claimId, requestId);
   return result;
 }

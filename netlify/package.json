@@ -11,7 +11,8 @@
     "setup": "tsx --env-file=.env scripts/setup.mts",
     "smoke": "tsx --env-file=.env scripts/smoke.mts",
     "build:functions": "node scripts/build-functions.mjs",
-    "publish:apk": "tsx --env-file=.env scripts/publish-apk.mts"
+    "publish:apk": "tsx --env-file=.env scripts/publish-apk.mts",
+    "renumber": "tsx --env-file=.env scripts/renumber-claims.mts"
   },
   "dependencies": {
     "@jep/shared": "*",

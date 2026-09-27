@@ -1,7 +1,7 @@
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from 'pdf-lib';
 import subsetFont from 'subset-font';
-import { formatRM, formatYmd, formatYmdHms, isDraftRefNo, type ClaimDoc } from '@jep/shared';
+import { formatRM, formatYmd, formatYmdHms, type ClaimDoc } from '@jep/shared';
 import type { PdfAssets } from '../assets';
 import { wrapText } from './wrapText';
 
@@ -236,7 +236,10 @@ export async function buildClaimPdf(
 }
 
 export function toPdfInput(c: ClaimDoc, now: Date): ClaimPdfInput {
-  const isDraft = isDraftRefNo(c.refNo);
+  // Approval details only once approved; the DRAFT mark only while waiting for review (the ref no. suffix
+  // says Rejected / Cancelled otherwise).
+  const approved = c.status === 'approved' || c.status === 'paid';
+  const isDraft = c.status === 'submitted';
   return {
     refNo: c.refNo,
     isDraft,
@@ -245,7 +248,7 @@ export function toPdfInput(c: ClaimDoc, now: Date): ClaimPdfInput {
     items: c.items.map((i) => ({ description: i.description, amountCents: i.amountCents, reference: i.reference })),
     totalCents: c.totalCents,
     payment: c.payment,
-    approval: !isDraft && c.review ? { byName: c.review.byName, date: formatYmd(c.review.at.toDate()) } : null,
+    approval: approved && c.review ? { byName: c.review.byName, date: formatYmd(c.review.at.toDate()) } : null,
     generatedAt: formatYmdHms(now),
   };
 }

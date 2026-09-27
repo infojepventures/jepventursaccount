@@ -148,9 +148,9 @@ try {
   await db.collection(COL.claims).doc(claimId).delete();
   await db.collection(COL.uploadFolders).doc(claimId).delete();
   const after = (await counterRef.get()).data()?.next as number;
-  // Only roll the counter back if the smoke approval consumed exactly counterBefore (visible in the final
-  // refNo's zero-padded suffix) and nothing else has bumped the counter since.
-  const consumedExpectedSeq = c?.refNo.endsWith(String(counterBefore).padStart(3, '0')) ?? false;
+  // Only roll the counter back if the smoke claim took exactly counterBefore (visible in its ref base,
+  // PR-JEP-yyyyMM-NNNN) and nothing else has bumped the counter since.
+  const consumedExpectedSeq = c?.refBase?.endsWith(`-${String(counterBefore).padStart(4, '0')}`) ?? false;
   if (consumedExpectedSeq && after === counterBefore + 1) {
     await counterRef.update({ next: counterBefore });
   } else if (after !== counterBefore) {

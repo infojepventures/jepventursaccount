@@ -26,6 +26,10 @@ describe('cancelClaim', () => {
     expect(c.status).toBe('cancelled');
     expect(c.history.at(-1)?.action).toBe('cancel');
     expect(t.sheets.rows.get(claimId)?.[2]).toBe('cancelled');
+    // Same number, -Cancelled suffix, and a fresh PDF showing it.
+    expect(c.refNo).toBe('PR-JEP-202609-0001-Cancelled');
+    expect(c.pdf.status).toBe('generating');
+    expect(t.triggered.at(-1)).toEqual({ claimId, requestId: c.pdf.requestId });
   });
 
   it('refuses other users and non-submitted claims', async () => {
@@ -52,6 +56,10 @@ describe('markPaid', () => {
     expect(c.status).toBe('paid');
     expect(c.paidInfo).toMatchObject({ byUid: 'boss', paidDate: '2026-09-27', reference: 'IBG123' });
     expect(t.sheets.rows.get(claimId)?.[14]).toBe('2026-09-27');
+    expect(c.refNo).toBe('PR-JEP-202609-0001-Paid');
+    expect(t.sheets.rows.get(claimId)?.[1]).toBe('PR-JEP-202609-0001-Paid');
+    expect(c.pdf.status).toBe('generating');
+    expect(t.triggered.at(-1)).toEqual({ claimId, requestId: c.pdf.requestId });
   });
 });
 

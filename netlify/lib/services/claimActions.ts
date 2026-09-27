@@ -1,13 +1,15 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import {
-  isValidClaimId, isValidYmd, PDF_STUCK_AFTER_MS,
-  type ClaimDoc, type ClaimIdRequest, type HistoryAction, type MarkPaidRequest, type StatusResponse,
+  isValidClaimId, isValidYmd, PDF_STUCK_AFTER_MS, refNoFor,
+  type ClaimDoc, type ClaimIdRequest, type ClaimStatus, type HistoryAction, type MarkPaidRequest, type StatusResponse,
 } from '@jep/shared';
 import { assertAdmin, type Actor } from '../actor';
 import { assertCan } from '../claimAccess';
 import type { Deps } from '../deps';
 import { fail } from '../errors';
+import type { Transaction } from 'firebase-admin/firestore';
 import { claimRef } from '../firestore';
+import { refBaseOfClaim } from '../refNumbers';
 import { notifyClaimEvent } from './notify';
 import { startPdf } from './pdfTrigger';
 import { syncClaimToSheet } from './sheetSync';
@@ -16,7 +18,7 @@ import { syncClaimToSheet } from './sheetSync';
 async function transition(
   deps: Deps,
   claimId: unknown,
-  mutate: (cur: ClaimDoc, now: Timestamp) => Record<string, unknown>,
+  mutate: (cur: ClaimDoc, now: Timestamp, tx: Transaction) => Record<string, unknown> | Promise<Record<string, unknown>>,
 ): Promise<void> {
   if (!isValidClaimId(claimId)) throw fail.invalid('Invalid claimId');
   const ref = claimRef(deps.db, claimId);
@@ -24,9 +26,24 @@ async function transition(
   await deps.db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw fail.notFound('Claim not found');
-    tx.update(ref, { ...mutate(snap.data() as ClaimDoc, now), updatedAt: now });
+    tx.update(ref, { ...(await mutate(snap.data() as ClaimDoc, now, tx)), updatedAt: now });
   });
   await syncClaimToSheet(deps, claimId);
+}
+
+/**
+ * The fields for moving a claim to `status`: the ref no. suffix follows it, and the PDF (which shows the ref
+ * no.) is regenerated. Call from inside `transition` after the status checks.
+ */
+async function statusChange(deps: Deps, tx: Transaction, cur: ClaimDoc, now: Timestamp, status: ClaimStatus, requestId: string) {
+  const number = await refBaseOfClaim(tx, deps.db, cur);
+  number.commit();
+  return {
+    status,
+    refBase: number.refBase,
+    refNo: refNoFor(number.refBase, status),
+    pdf: { ...cur.pdf, status: 'generating', requestId, requestedAt: now, error: null },
+  };
 }
 
 const history = (cur: ClaimDoc, actor: Actor, action: HistoryAction, at: Timestamp, note: string | null = null) => [
@@ -35,10 +52,12 @@ const history = (cur: ClaimDoc, actor: Actor, action: HistoryAction, at: Timesta
 ];
 
 export async function cancelClaim(deps: Deps, actor: Actor, req: ClaimIdRequest): Promise<StatusResponse> {
-  await transition(deps, req?.claimId, (cur, now) => {
+  const requestId = deps.newId();
+  await transition(deps, req?.claimId, async (cur, now, tx) => {
     assertCan('cancel', cur, actor);
-    return { status: 'cancelled', history: history(cur, actor, 'cancel', now) };
+    return { ...(await statusChange(deps, tx, cur, now, 'cancelled', requestId)), history: history(cur, actor, 'cancel', now) };
   });
+  await startPdf(deps, req.claimId, requestId);
   return { status: 'cancelled' };
 }
 
@@ -47,15 +66,17 @@ export async function markPaid(deps: Deps, actor: Actor, req: MarkPaidRequest): 
   if (typeof req?.paidDate !== 'string' || !isValidYmd(req.paidDate)) throw fail.invalid('paidDate must be yyyy-MM-dd');
   const reference = typeof req.reference === 'string' ? req.reference.trim() : '';
   if (reference.length > 100) throw fail.invalid('Payment reference is too long');
-  await transition(deps, req.claimId, (cur, now) => {
+  const requestId = deps.newId();
+  await transition(deps, req.claimId, async (cur, now, tx) => {
     assertCan('mark_paid', cur, actor);
     return {
-      status: 'paid',
+      ...(await statusChange(deps, tx, cur, now, 'paid', requestId)),
       paidInfo: { byUid: actor.uid, byName: actor.name, at: now, paidDate: req.paidDate, reference },
       history: history(cur, actor, 'mark_paid', now, `${req.paidDate} ${reference}`.trim()),
     };
   });
   await notifyClaimEvent(deps, 'paid', req.claimId, actor.uid);
+  await startPdf(deps, req.claimId, requestId);
   return { status: 'paid' };
 }
 
