@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { extractPaymentSlipFromText, formatYmd, isValidYmd, type PaymentSlipSuggestion } from '@jep/shared';
 import { recognizeText } from '../claims/ocr';
 import { applyPaymentSuggestion, uploadPaymentSlip, type PaidFields } from '../claims/paymentSlip';
@@ -35,6 +36,15 @@ export function MarkPaidModal(p: { visible: boolean; claimId: string; onClose: (
   const [busy, run] = useBusy();
   const current = useRef<string | null>(null);
   const edited = useRef(new Set<keyof PaidFields>());
+  const router = useRouter();
+  // The dialog steps aside while the slip is open in the viewer, and comes back (as it was) on return.
+  const [previewing, setPreviewing] = useState(false);
+  useFocusEffect(useCallback(() => setPreviewing(false), []));
+
+  const preview = (file: LocalAttachment) => {
+    setPreviewing(true);
+    router.push({ pathname: '/viewer', params: { localUri: file.uri, mimeType: file.mimeType, name: file.name } });
+  };
 
   useEffect(() => {
     if (!p.visible) return;
@@ -152,7 +162,7 @@ export function MarkPaidModal(p: { visible: boolean; claimId: string; onClose: (
             : (slip.note ?? 'Uploaded');
 
   return (
-    <Modal visible={p.visible} transparent animationType="fade" onRequestClose={cancel}>
+    <Modal visible={p.visible && !previewing} transparent animationType="fade" onRequestClose={cancel}>
       <View style={styles.backdrop}>
         <ScrollView contentContainerStyle={styles.center} keyboardShouldPersistTaps="handled">
           <View style={styles.sheet}>
@@ -161,18 +171,21 @@ export function MarkPaidModal(p: { visible: boolean; claimId: string; onClose: (
 
             {slip ? (
               <View style={styles.slip}>
-                {slip.file.mimeType === 'application/pdf' ? (
-                  <Text style={styles.pdfBadge}>PDF</Text>
-                ) : (
-                  <Image source={{ uri: slip.file.uri }} style={styles.thumb} />
-                )}
-                <View style={styles.flex}>
+                <Pressable accessibilityRole="button" accessibilityLabel="View slip" onPress={() => preview(slip.file)}>
+                  {slip.file.mimeType === 'application/pdf' ? (
+                    <Text style={styles.pdfBadge}>PDF</Text>
+                  ) : (
+                    <Image source={{ uri: slip.file.uri }} style={styles.thumb} />
+                  )}
+                </Pressable>
+                <Pressable style={styles.flex} onPress={() => preview(slip.file)}>
                   <Text style={styles.slipName} numberOfLines={1}>{slip.file.name}</Text>
+                  <Text style={styles.tapHint}>Tap to view</Text>
                   <View style={styles.inline}>
                     {slip.reading || (!slip.uploadedId && !slip.uploadError) ? <ActivityIndicator size="small" color={colors.primary} /> : null}
                     <Text style={[styles.slipStatus, slip.uploadError ? { color: colors.danger } : null]}>{status}</Text>
                   </View>
-                </View>
+                </Pressable>
                 <Button title="Remove" variant="secondary" disabled={busy} onPress={removeSlip} />
               </View>
             ) : null}
@@ -223,6 +236,7 @@ const styles = StyleSheet.create({
   thumb: { width: 48, height: 48, borderRadius: 6, backgroundColor: colors.border },
   pdfBadge: { width: 48, height: 48, borderRadius: 6, backgroundColor: colors.border, textAlign: 'center', textAlignVertical: 'center', fontWeight: '700', color: colors.muted },
   slipName: { color: colors.text, fontWeight: '500' },
+  tapHint: { color: colors.primary, fontSize: 12 },
   slipStatus: { color: colors.muted, fontSize: 12, flexShrink: 1 },
   error: { color: colors.danger, fontSize: 13 },
 });
