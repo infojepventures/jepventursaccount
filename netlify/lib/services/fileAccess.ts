@@ -17,7 +17,10 @@ export async function openClaimFile(
   const claim = await getClaim(deps.db, claimId);
   if (!claim) throw fail.notFound('Claim not found');
   if (!canReadClaim(claim, actor)) throw fail.forbidden();
-  const belongs = claim.attachments.some((a) => a.driveFileId === fileId) || claim.pdf.driveFileId === fileId;
+  const belongs =
+    claim.attachments.some((a) => a.driveFileId === fileId) ||
+    claim.pdf.driveFileId === fileId ||
+    claim.paidInfo?.slip?.driveFileId === fileId;
   if (!belongs) throw fail.notFound('File not found');
   const meta = await deps.drive.getFile(fileId);
   if (!meta || meta.trashed) throw fail.notFound('File not found');

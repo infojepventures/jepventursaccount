@@ -1,5 +1,9 @@
-import { isAllowedMime, isValidClaimId, type AnalyzeAttachmentRequest, type AnalyzeAttachmentResponse, type AttachmentSuggestion } from '@jep/shared';
+import {
+  extractPaymentSlipFromText, isAllowedMime, isValidClaimId,
+  type AnalyzeAttachmentRequest, type AnalyzeAttachmentResponse, type AttachmentSuggestion,
+} from '@jep/shared';
 import type { Actor } from '../actor';
+import { assertCan } from '../claimAccess';
 import type { Deps } from '../deps';
 import { fail } from '../errors';
 import { COL, getClaim } from '../firestore';
@@ -28,6 +32,44 @@ async function resolveFolderId(deps: Deps, actor: Actor, claimId: string): Promi
   return bound.folderId;
 }
 
+async function checkedFile(deps: Deps, folderId: string, fileId: string) {
+  const meta = await deps.drive.getFile(fileId);
+  if (!meta || meta.trashed || !meta.parents.includes(folderId)) {
+    throw fail.invalid('This file does not belong to this claim. Please re-upload it.');
+  }
+  if (!isAllowedMime(meta.mimeType)) throw fail.invalid('Only JPG, PNG or PDF files can be analysed');
+  if (meta.size <= 0 || meta.size > MAX_OCR_BYTES) throw fail.invalid('This file is too large to analyse');
+  return meta;
+}
+
+/** Paid date and bank reference from a payment slip: the app's OCR text, else the PDF's text (Document AI for scans). */
+async function analyzePaymentSlip(deps: Deps, actor: Actor, req: AnalyzeAttachmentRequest): Promise<AnalyzeAttachmentResponse> {
+  const claim = await getClaim(deps.db, req.claimId);
+  if (!claim) throw fail.notFound('Claim not found');
+  assertCan('mark_paid', claim, actor);
+  const meta = await checkedFile(deps, claim.attachmentsFolderId, req.fileId);
+  if (req.text && req.text.trim()) return { suggestion: {}, payment: extractPaymentSlipFromText(req.text) };
+
+  const data = await deps.drive.download(req.fileId);
+  let text = '';
+  if (meta.mimeType === 'application/pdf') {
+    try {
+      text = await extractPdfText(data);
+    } catch (e) {
+      console.error('[analyzeAttachment] slip PDF text extraction failed', req.claimId, req.fileId, e);
+    }
+  }
+  if (!text.trim() && deps.docai) {
+    try {
+      text = (await deps.docai.process(data, meta.mimeType)).text;
+    } catch (e) {
+      console.error('[analyzeAttachment] Document AI failed on a payment slip', e);
+    }
+  }
+  if (!text.trim() && meta.mimeType === 'application/pdf') throw fail.ocrFailed();
+  return { suggestion: {}, payment: extractPaymentSlipFromText(text) };
+}
+
 async function suggestionViaDocai(deps: Deps, data: Uint8Array, mimeType: string): Promise<AttachmentSuggestion | null> {
   if (!deps.docai) return null;
   try {
@@ -50,14 +92,11 @@ export async function analyzeAttachment(
     throw fail.invalid('Invalid text');
   }
 
-  const folderId = await resolveFolderId(deps, actor, req.claimId);
+  if (req.purpose === 'paymentSlip') return analyzePaymentSlip(deps, actor, req);
+  if (req.purpose !== undefined && req.purpose !== 'receipt') throw fail.invalid('Invalid purpose');
 
-  const meta = await deps.drive.getFile(req.fileId);
-  if (!meta || meta.trashed || !meta.parents.includes(folderId)) {
-    throw fail.invalid('This file does not belong to this claim. Please re-upload it.');
-  }
-  if (!isAllowedMime(meta.mimeType)) throw fail.invalid('Only JPG, PNG or PDF files can be analysed');
-  if (meta.size <= 0 || meta.size > MAX_OCR_BYTES) throw fail.invalid('This file is too large to analyse');
+  const folderId = await resolveFolderId(deps, actor, req.claimId);
+  const meta = await checkedFile(deps, folderId, req.fileId);
 
   // 1. On-device OCR text supplied by the app for image attachments: use it directly.
   if (req.text && req.text.trim()) {

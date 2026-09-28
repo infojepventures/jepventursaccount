@@ -24,6 +24,8 @@ export interface DriveApi {
   download(fileId: string): Promise<Uint8Array>;
   downloadResponse(fileId: string): Promise<Response>;
   upload(p: { name: string; mimeType: string; parentId: string; data: Uint8Array }): Promise<{ id: string }>;
+  /** Replaces a file's content and name in place, so its id (and every link to it) stays the same. */
+  overwrite(fileId: string, p: { name: string; mimeType: string; data: Uint8Array }): Promise<void>;
   trash(fileId: string): Promise<void>;
   rename(fileId: string, name: string): Promise<void>;
 }
@@ -143,6 +145,26 @@ export class DriveClient implements DriveApi {
     if (!res.ok) throw new Error(`Drive upload failed: ${res.status} ${await res.text()}`);
     const d = (await res.json()) as { id: string };
     return { id: d.id };
+  }
+
+  async overwrite(fileId: string, p: { name: string; mimeType: string; data: Uint8Array }): Promise<void> {
+    // Resumable, like upload(): merged PDFs can exceed the 5MB multipart limit.
+    const res = await this.req(
+      `${UPLOAD}/files/${encodeURIComponent(fileId)}?uploadType=resumable&supportsAllDrives=true&fields=id`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          'X-Upload-Content-Type': p.mimeType,
+          'X-Upload-Content-Length': String(p.data.length),
+        },
+        body: JSON.stringify({ name: p.name }),
+      },
+    );
+    const location = res.headers.get('location');
+    if (!res.ok || !location) throw new Error(`Drive overwrite session failed: ${res.status} ${await res.text()}`);
+    const put = await this.fetchImpl(location, { method: 'PUT', headers: { 'Content-Type': p.mimeType }, body: toArrayBuffer(p.data) });
+    if (!put.ok) throw new Error(`Drive overwrite failed: ${put.status} ${await put.text()}`);
   }
 
   /** Moves a file or folder to the trash. Already gone (404, e.g. deleted by hand) counts as done. */

@@ -14,6 +14,7 @@ const bytes = await buildClaimPdf(
     totalCents: 15000,
     payment: { bankName: 'Maybank', accountHolder: 'Tan Ah Kow', accountNumber: '1234 5678 9012' },
     approval: null,
+    paid: null,
     generatedAt: '2026-09-25 12:00:00',
   },
   [{ mimeType: 'image/jpeg', data: readFileSync('test/fixtures/receipt.jpg') }],

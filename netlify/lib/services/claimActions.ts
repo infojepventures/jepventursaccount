@@ -1,14 +1,14 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import {
-  isValidClaimId, isValidYmd, PDF_STUCK_AFTER_MS,
-  type ClaimDoc, type ClaimIdRequest, type ClaimStatus, type HistoryAction, type MarkPaidRequest, type StatusResponse,
+  isAllowedMime, isValidClaimId, isValidYmd, MAX_ATTACHMENT_BYTES, PDF_STUCK_AFTER_MS,
+  type Attachment, type ClaimDoc, type ClaimIdRequest, type ClaimStatus, type HistoryAction, type MarkPaidRequest, type StatusResponse,
 } from '@jep/shared';
 import { assertAdmin, type Actor } from '../actor';
 import { assertCan } from '../claimAccess';
 import type { Deps } from '../deps';
 import { fail } from '../errors';
 import type { Transaction } from 'firebase-admin/firestore';
-import { claimRef } from '../firestore';
+import { claimRef, getClaim } from '../firestore';
 import { refNoOfClaim } from '../refNumbers';
 import { notifyClaimEvent } from './notify';
 import { startPdf } from './pdfTrigger';
@@ -60,17 +60,34 @@ export async function cancelClaim(deps: Deps, actor: Actor, req: ClaimIdRequest)
   return { status: 'cancelled' };
 }
 
+/** Checks a slip uploaded with purpose 'paymentSlip' sits in this claim's receipts folder and isn't one of its receipts. */
+async function paymentSlip(deps: Deps, actor: Actor, claimId: unknown, fileId: unknown): Promise<Attachment> {
+  if (!isValidClaimId(claimId)) throw fail.invalid('Invalid claimId');
+  if (typeof fileId !== 'string' || !fileId) throw fail.invalid('Invalid slipFileId');
+  const claim = await getClaim(deps.db, claimId);
+  if (!claim) throw fail.notFound('Claim not found');
+  assertCan('mark_paid', claim, actor);
+  const meta = await deps.drive.getFile(fileId);
+  if (!meta || meta.trashed || !meta.parents.includes(claim.attachmentsFolderId) || claim.attachments.some((a) => a.driveFileId === fileId)) {
+    throw fail.invalid('This payment slip does not belong to this claim. Please upload it again.');
+  }
+  if (!isAllowedMime(meta.mimeType)) throw fail.invalid('The payment slip must be a JPG, PNG or PDF');
+  if (meta.size <= 0 || meta.size > MAX_ATTACHMENT_BYTES) throw fail.invalid('The payment slip is larger than 10MB');
+  return { driveFileId: fileId, name: meta.name, mimeType: meta.mimeType, size: meta.size };
+}
+
 export async function markPaid(deps: Deps, actor: Actor, req: MarkPaidRequest): Promise<StatusResponse> {
   assertAdmin(actor);
   if (typeof req?.paidDate !== 'string' || !isValidYmd(req.paidDate)) throw fail.invalid('paidDate must be yyyy-MM-dd');
   const reference = typeof req.reference === 'string' ? req.reference.trim() : '';
   if (reference.length > 100) throw fail.invalid('Payment reference is too long');
+  const slip = req.slipFileId === undefined ? null : await paymentSlip(deps, actor, req.claimId, req.slipFileId);
   const requestId = deps.newId();
   await transition(deps, req.claimId, async (cur, now, tx) => {
     assertCan('mark_paid', cur, actor);
     return {
       ...(await statusChange(deps, tx, cur, now, 'paid', requestId)),
-      paidInfo: { byUid: actor.uid, byName: actor.name, at: now, paidDate: req.paidDate, reference },
+      paidInfo: { byUid: actor.uid, byName: actor.name, at: now, paidDate: req.paidDate, reference, slip },
       history: history(cur, actor, 'mark_paid', now, `${req.paidDate} ${reference}`.trim()),
     };
   });

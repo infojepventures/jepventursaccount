@@ -78,6 +78,8 @@ export interface PaidInfo {
   /** yyyy-MM-dd */
   paidDate: string;
   reference: string;
+  /** The bank transfer slip uploaded when marking paid (in the claim's receipts folder); absent on older claims. */
+  slip?: Attachment | null;
 }
 
 export interface ClaimDoc {

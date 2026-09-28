@@ -1,3 +1,4 @@
+import type { PaymentSlipSuggestion } from './paymentSlipRules';
 import type { BankDetails, ClaimItem, ClaimStatus, Role } from './types';
 
 /** Netlify function names, called as `${base}/.netlify/functions/${name}`. */
@@ -49,9 +50,13 @@ export interface UploadFileMeta {
   size: number;
 }
 
+/** 'receipt' (default): a claim's receipts. 'paymentSlip': the bank slip an admin attaches when marking paid. */
+export type UploadPurpose = 'receipt' | 'paymentSlip';
+
 export interface UploadSessionRequest {
   claimId: string;
   files: UploadFileMeta[];
+  purpose?: UploadPurpose;
 }
 
 export interface UploadSessionResponse {
@@ -98,6 +103,8 @@ export interface MarkPaidRequest {
   /** yyyy-MM-dd */
   paidDate: string;
   reference: string;
+  /** Drive id of a payment slip uploaded with purpose 'paymentSlip'. */
+  slipFileId?: string;
 }
 
 export type AdminUsersRequest =
@@ -131,6 +138,7 @@ export interface AnalyzeAttachmentRequest {
   fileId: string;
   /** On-device OCR text for image attachments (PDFs are extracted server-side). Max 20,000 chars. */
   text?: string;
+  purpose?: UploadPurpose;
 }
 
 export interface AttachmentSuggestion {
@@ -146,12 +154,15 @@ export interface AttachmentSuggestion {
 
 export interface AnalyzeAttachmentResponse {
   suggestion: AttachmentSuggestion;
+  /** Set for purpose 'paymentSlip'. */
+  payment?: PaymentSlipSuggestion;
 }
 
 /** Trashes receipts uploaded for a claim that were then removed from the form before it was saved. */
 export interface DiscardUploadRequest {
   claimId: string;
   fileIds: string[];
+  purpose?: UploadPurpose;
 }
 
 export interface DiscardUploadResponse {

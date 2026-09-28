@@ -16,6 +16,7 @@ const input: ClaimPdfInput = {
   totalCents: 15000,
   payment: { bankName: 'Maybank', accountHolder: 'Tan Ah Kow', accountNumber: '1234 5678 9012' },
   approval: null,
+  paid: null,
   generatedAt: '2026-09-25 12:00:00',
 };
 
@@ -62,6 +63,21 @@ describe('buildClaimPdf', () => {
     expect(text).not.toContain('PENDING APPROVAL');
     expect(text).toContain('Approved by');
     expect(text).toContain('Boss');
+  });
+
+  it('shows the payment block once paid, and none before', async () => {
+    const assets = await loadPdfAssets();
+    const paid = await buildClaimPdf(
+      { ...input, approval: { byName: 'Boss', date: '2026-10-01' }, paid: { date: '2026-10-03', reference: '6123456789' } },
+      [],
+      assets,
+    );
+    const text = await extractText(paid, 1);
+    expect(text).toContain('Paid on');
+    expect(text).toContain('2026-10-03');
+    expect(text).toContain('Payment ref');
+    expect(text).toContain('6123456789');
+    expect(await extractText(await buildClaimPdf(input, [], assets), 1)).not.toContain('Paid on');
   });
 
   it('continues long item lists on extra form pages', async () => {

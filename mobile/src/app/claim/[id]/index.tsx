@@ -1,10 +1,11 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
-import { allowedActions, formatRM, formatYmd, formatYmdHms, isValidYmd, PDF_STUCK_AFTER_MS } from '@jep/shared';
+import { allowedActions, formatRM, formatYmdHms, PDF_STUCK_AFTER_MS } from '@jep/shared';
 import { useAuth } from '../../../auth/AuthProvider';
 import { remoteAttachments } from '../../../claims/draft';
 import { AttachmentList } from '../../../components/AttachmentList';
+import { MarkPaidModal } from '../../../components/MarkPaidModal';
 import { useClaim } from '../../../data/useClaims';
 import { buildWhatsAppClaimText } from '../../../files/claimShareText';
 import { withShortLinks } from '../../../files/shortLinks';
@@ -149,8 +150,27 @@ export default function ClaimDetailScreen() {
           <Row label="Bank" value={claim.payment.bankName} />
           <Row label="Account holder" value={claim.payment.accountHolder} />
           <Row label="Account number" value={claim.payment.accountNumber} />
-          {claim.paidInfo ? <Row label="Paid on" value={`${claim.paidInfo.paidDate} ${claim.paidInfo.reference}`.trim()} /> : null}
         </Section>
+
+        {claim.paidInfo ? (
+          <Section title="Payment">
+            <Row label="Paid on" value={claim.paidInfo.paidDate} />
+            <Row label="Payment ref" value={claim.paidInfo.reference} />
+            {claim.paidInfo.slip ? (
+              <Button
+                title="View payment slip"
+                icon="receipt-outline"
+                variant="secondary"
+                onPress={() =>
+                  router.push({
+                    pathname: '/viewer',
+                    params: { claimId: claim.id, fileId: claim.paidInfo!.slip!.driveFileId, mimeType: claim.paidInfo!.slip!.mimeType, name: claim.paidInfo!.slip!.name },
+                  })
+                }
+              />
+            ) : null}
+          </Section>
+        ) : null}
 
         <Section title={`Receipts (${claim.attachments.length})`}>
           <AttachmentList claimId={claim.id} items={remoteAttachments(claim)} />
@@ -192,22 +212,7 @@ export default function ClaimDetailScreen() {
           setModal(null);
         }}
       />
-      <PromptModal
-        visible={modal === 'paid'}
-        title="Mark as paid"
-        fields={[
-          { key: 'paidDate', label: 'Paid date (yyyy-MM-dd)', initial: formatYmd(new Date()), keyboardType: 'numbers-and-punctuation', autoCapitalize: 'none' },
-          { key: 'reference', label: 'Payment reference (optional)', placeholder: 'e.g. IBG ref', autoCapitalize: 'none' },
-        ]}
-        confirmLabel="Mark paid"
-        onCancel={() => setModal(null)}
-        onConfirm={async (v) => {
-          const paidDate = String(v.paidDate ?? '').trim();
-          if (!isValidYmd(paidDate)) throw new Error('Enter the date as yyyy-MM-dd.');
-          await api.markPaid({ claimId: claim.id, paidDate, reference: String(v.reference ?? '').trim() });
-          setModal(null);
-        }}
-      />
+      <MarkPaidModal visible={modal === 'paid'} claimId={claim.id} onClose={() => setModal(null)} />
     </>
   );
 }

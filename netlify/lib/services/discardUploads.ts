@@ -22,6 +22,7 @@ interface UploadFolderDoc {
  * Trashes receipts the applicant removed from the form before saving. On a new (unsaved) claim any file in
  * its bound upload folder may go; on a rejected claim being resubmitted only files uploaded since, never the
  * claim's saved attachments (those are trashed by submitClaim once the resubmission actually replaces them).
+ * With purpose 'paymentSlip', an admin discards a slip uploaded while marking an approved claim paid.
  */
 export async function discardUploads(deps: Deps, actor: Actor, req: DiscardUploadRequest): Promise<DiscardUploadResponse> {
   if (!isValidClaimId(req?.claimId)) throw fail.invalid('Invalid claimId');
@@ -33,7 +34,14 @@ export async function discardUploads(deps: Deps, actor: Actor, req: DiscardUploa
   let folderId: string;
   const keep = new Set<string>();
   const claim = await getClaim(deps.db, req.claimId);
-  if (claim) {
+  if (req.purpose === 'paymentSlip') {
+    // A slip picked in the Mark-as-paid dialog that was then replaced or cancelled.
+    if (!claim) throw fail.notFound('Claim not found');
+    assertCan('mark_paid', claim, actor);
+    folderId = claim.attachmentsFolderId;
+    for (const a of claim.attachments) keep.add(a.driveFileId);
+    if (claim.paidInfo?.slip) keep.add(claim.paidInfo.slip.driveFileId);
+  } else if (claim) {
     assertCan('resubmit', claim, actor);
     folderId = claim.attachmentsFolderId;
     for (const a of claim.attachments) keep.add(a.driveFileId);

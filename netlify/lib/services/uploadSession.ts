@@ -60,7 +60,18 @@ export async function createUploadSessions(
 
   const existing = await getClaim(deps.db, req.claimId);
   let folderId: string;
-  if (existing) {
+  if (req.purpose === 'paymentSlip') {
+    // One bank slip, uploaded by the admin marking an approved claim paid, next to its receipts.
+    if (!existing) throw fail.notFound('Claim not found');
+    if (req.files.length !== 1) throw fail.invalid('Upload one payment slip');
+    assertCan('mark_paid', existing, actor);
+    folderId = existing.attachmentsFolderId;
+    const name = `payment-slip-${sanitizeFileNamePart(req.files[0]!.name) || 'slip'}`;
+    const uploadUrl = await deps.drive.createResumableUpload({ name, mimeType: req.files[0]!.mimeType, size: req.files[0]!.size, parentId: folderId });
+    return { folderId, uploads: [{ name, uploadUrl }] };
+  } else if (req.purpose !== undefined && req.purpose !== 'receipt') {
+    throw fail.invalid('Invalid purpose');
+  } else if (existing) {
     assertCan('resubmit', existing, actor);
     folderId = existing.attachmentsFolderId;
   } else {

@@ -79,6 +79,14 @@ export class FakeDrive implements DriveApi {
     return { id: this.completeUpload(url, p.data) };
   }
 
+  overwrites = 0;
+  async overwrite(id: string, p: { name: string; mimeType: string; data: Uint8Array }) {
+    const f = this.files.get(id);
+    if (!f || f.trashed) throw new Error(`Drive overwrite failed: 404 ${id}`);
+    Object.assign(f, { name: p.name, mimeType: p.mimeType, size: p.data.length, data: p.data });
+    this.overwrites++;
+  }
+
   async trash(id: string) {
     const f = this.files.get(id);
     if (f) f.trashed = true;
