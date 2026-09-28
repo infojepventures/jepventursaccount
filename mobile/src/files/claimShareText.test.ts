@@ -16,13 +16,13 @@ describe('buildWhatsAppClaimText', () => {
     expect(buildWhatsAppClaimText(baseClaim)).toBe(
       [
         '> *Supplier: YU WAI LOONG*',
-        'PR-JEP-202609-001-YU WAI LOONG-30.00',
+        'PR-JEP-202609-001',
         'https://drive.google.com/file/d/ABC/view',
         '',
-        '> Inv: *PR-JEP-202609-001 - RM 10.00*',
+        '> Inv: *Cash Bill - RM 10.00*',
         'Parkinh',
         '',
-        '> Inv: *PR-JEP-202609-001 - RM 20.00*',
+        '> Inv: *Cash Bill - RM 20.00*',
         'Food',
         '',
         'Total RM 30.00',
@@ -47,11 +47,12 @@ describe('buildWhatsAppClaimText', () => {
     expect(buildWhatsAppClaimText(claim)).toBe(
       [
         '> *Supplier: YU WAI LOONG*',
+        'PR-JEP-202609-001',
         '',
-        '> Inv: *PR-JEP-202609-001 - RM 10.00*',
+        '> Inv: *Cash Bill - RM 10.00*',
         'Parkinh',
         '',
-        '> Inv: *PR-JEP-202609-001 - RM 20.00*',
+        '> Inv: *Cash Bill - RM 20.00*',
         'Food',
         '',
         'Total RM 30.00',
@@ -75,10 +76,10 @@ describe('buildWhatsAppClaimText', () => {
     expect(buildWhatsAppClaimText(claim)).toBe(
       [
         '> *Supplier: JOHN TAN*',
-        'PR-JEP-202609-002-JOHN TAN-5.00',
+        'PR-JEP-202609-002',
         'https://drive.google.com/file/d/XYZ/view',
         '',
-        '> Inv: *PR-JEP-202609-002 - RM 5.00*',
+        '> Inv: *Cash Bill - RM 5.00*',
         'Taxi ride home',
         '',
         'Total RM 5.00',
@@ -101,7 +102,7 @@ describe('buildWhatsAppClaimText item lines', () => {
 });
 
 describe('buildWhatsAppClaimText with a per-item reference', () => {
-  it('quotes the Doc No. when present, and the claim ref no. for items without one', () => {
+  it('quotes the Doc No. when present, and "Cash Bill" for items without one', () => {
     const claim = {
       ...baseClaim,
       items: [
@@ -112,13 +113,13 @@ describe('buildWhatsAppClaimText with a per-item reference', () => {
     expect(buildWhatsAppClaimText(claim)).toBe(
       [
         '> *Supplier: YU WAI LOONG*',
-        'PR-JEP-202609-001-YU WAI LOONG-30.00',
+        'PR-JEP-202609-001',
         'https://drive.google.com/file/d/ABC/view',
         '',
         '> Inv: *ICS-000024 - RM 10.00*',
         'Parkinh',
         '',
-        '> Inv: *PR-JEP-202609-001 - RM 20.00*',
+        '> Inv: *Cash Bill - RM 20.00*',
         'Food',
         '',
         'Total RM 30.00',
@@ -166,20 +167,20 @@ describe('buildWhatsAppBatchText', () => {
     expect(buildWhatsAppBatchText([claim1, claim2, claim3])).toBe(
       [
         '> *Supplier: YU WAI LOONG*',
-        'PR-JEP-202609-001-YU WAI LOONG-30.00',
+        'PR-JEP-202609-001',
         'https://drive.google.com/file/d/ABC/view',
         '',
-        '> Inv: *PR-JEP-202609-001 - RM 10.00*',
+        '> Inv: *Cash Bill - RM 10.00*',
         'Parking',
         '',
-        '> Inv: *PR-JEP-202609-001 - RM 20.00*',
+        '> Inv: *Cash Bill - RM 20.00*',
         'Food',
         '',
         '',
-        'PR-JEP-202609-002-YU WAI LOONG-15.00',
+        'PR-JEP-202609-002',
         'https://drive.google.com/file/d/DEF/view',
         '',
-        '> Inv: *PR-JEP-202609-002 - RM 15.00*',
+        '> Inv: *Cash Bill - RM 15.00*',
         'Toll',
         '',
         'Total RM 45.00',
@@ -190,10 +191,10 @@ describe('buildWhatsAppBatchText', () => {
         '*===============*',
         '',
         '> *Supplier: JOHN TAN*',
-        'PR-JEP-202609-003-JOHN TAN-7.00',
+        'PR-JEP-202609-003',
         'https://drive.google.com/file/d/GHI/view',
         '',
-        '> Inv: *PR-JEP-202609-003 - RM 7.00*',
+        '> Inv: *Cash Bill - RM 7.00*',
         'Stationery',
         '',
         'Total RM 7.00',

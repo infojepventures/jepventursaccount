@@ -38,15 +38,15 @@ function buildGroupText(claims: WhatsAppClaimTextInput[]): string {
 
   claims.forEach((claim, ci) => {
     const refNo = clean(claim.refNo);
-    if (claim.pdf.fileName) lines.push(clean(claim.pdf.fileName).replace(/\.pdf$/i, ''));
+    lines.push(refNo);
     const link = claimPdfLink(claim.pdf);
     if (link) lines.push(link);
     lines.push('');
 
     claim.items.forEach((item, ii) => {
-      // Quoted "Inv: *<Doc No.> - RM <amount>*" (the claim's ref no. when the item has none), then the
+      // Quoted "Inv: *<Doc No.> - RM <amount>*" ("Cash Bill" when the item has none), then the
       // description (the payee's name when there is none).
-      lines.push(`> Inv: *${clean(item.reference ?? '') || refNo} - ${formatRM(item.amountCents)}*`);
+      lines.push(`> Inv: *${clean(item.reference ?? '') || 'Cash Bill'} - ${formatRM(item.amountCents)}*`);
       lines.push(clean(item.description) || accountHolder);
       if (ii < claim.items.length - 1) lines.push('');
     });
@@ -86,7 +86,7 @@ export function buildWhatsAppBatchText(claims: WhatsAppClaimTextInput[]): string
 
 /**
  * Builds the WhatsApp-markdown text message for a single claim's "WhatsApp" share button: a quoted
- * supplier line, document name and PDF link, per item a quoted "Inv: *Doc No. - amount*" then the description, then a totals +
+ * supplier line, the claim's ref no. and PDF link, per item a quoted "Inv: *Doc No. - amount*" then the description, then a totals +
  * bank-details footer. Pure and native-mock-free so it's directly unit-testable.
  */
 export function buildWhatsAppClaimText(claim: WhatsAppClaimTextInput): string {
