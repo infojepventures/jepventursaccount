@@ -22,12 +22,15 @@ const option = (name: string) => {
 };
 
 const mobileDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../mobile');
-const eas = (cmd: string) =>
-  execSync(`npx --yes eas-cli@latest ${cmd} --json --non-interactive`, { cwd: mobileDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+// build:view has no --non-interactive flag (it never prompts).
+const eas = (cmd: string, interactiveFlag = true) =>
+  execSync(`npx --yes eas-cli@latest ${cmd} --json${interactiveFlag ? ' --non-interactive' : ''}`, {
+    cwd: mobileDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'],
+  });
 
 const buildId = option('build');
 const raw = buildId
-  ? JSON.parse(eas(`build:view ${buildId}`))
+  ? JSON.parse(eas(`build:view ${buildId}`, false))
   : JSON.parse(eas('build:list --platform android --status finished --build-profile production --limit 1'))[0];
 if (!raw) throw new Error('No finished production Android build found on EAS');
 const release = apkConfigFromBuild(raw);
