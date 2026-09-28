@@ -29,7 +29,7 @@ interface Slip {
  * Mark as paid: optionally attach the bank transfer slip, which is uploaded next to the receipts and read (on the
  * device, or on the server for a scanned PDF) to fill in the paid date and payment reference.
  */
-export function MarkPaidModal(p: { visible: boolean; claimId: string; onClose: () => void }) {
+export function MarkPaidModal(p: { visible: boolean; claimId: string; initialFile?: LocalAttachment | null; onClose: () => void }) {
   const [fields, setFields] = useState<PaidFields>({ paidDate: formatYmd(new Date()), reference: '' });
   const [slip, setSlip] = useState<Slip | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +53,10 @@ export function MarkPaidModal(p: { visible: boolean; claimId: string; onClose: (
     setError(null);
     current.current = null;
     edited.current = new Set();
-  }, [p.visible]);
+    // A slip shared from another app starts uploading and being read straight away.
+    const shared = p.initialFile;
+    if (shared) void choose(() => Promise.resolve([shared]));
+  }, [p.visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const patch = (key: string, change: Partial<Slip>) =>
     setSlip((s) => (s && s.file.key === key ? { ...s, ...change } : s));

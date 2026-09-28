@@ -8,12 +8,14 @@
     "mobile"
   ],
   "scripts": {
+    "postinstall": "node scripts/postinstall.cjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:int": "firebase emulators:exec --project demo-jep --only auth,firestore \"npm run test:int -w @jep/netlify\""
   },
   "devDependencies": {
     "firebase-tools": "^15.31.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.3"
   },
   "overrides": {

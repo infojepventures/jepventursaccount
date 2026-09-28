@@ -1,4 +1,5 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { ShareIntentProvider } from 'expo-share-intent';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -6,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import { routeFor } from '../auth/routeFor';
 import { useNotificationTapNavigation } from '../notifications/push';
+import { ShareIntentHandler } from '../share/ShareIntentHandler';
 import { colors, space } from '../ui/theme';
 import { UpdateBanner } from '../updates/UpdateBanner';
 
@@ -57,19 +59,24 @@ function Gate() {
       <Stack.Screen name="claim/[id]/index" options={{ title: 'Claim' }} />
       <Stack.Screen name="claim/[id]/edit" options={{ title: 'Edit & resubmit' }} />
       <Stack.Screen name="viewer" options={{ title: 'Attachment' }} />
+      <Stack.Screen name="pay-slip" options={{ title: 'Payment slip for…' }} />
     </Stack>
   );
 }
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <AuthProvider>
-        <Gate />
-        <UpdateBanner />
-      </AuthProvider>
-    </SafeAreaProvider>
+    // Share intents first, so a file shared while the app was closed isn't missed.
+    <ShareIntentProvider>
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        <AuthProvider>
+          <Gate />
+          <ShareIntentHandler />
+          <UpdateBanner />
+        </AuthProvider>
+      </SafeAreaProvider>
+    </ShareIntentProvider>
   );
 }
 

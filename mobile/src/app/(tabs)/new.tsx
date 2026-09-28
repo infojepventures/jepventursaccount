@@ -19,6 +19,7 @@ export default function NewClaimTab() {
       key={claimId}
       claimId={claimId}
       resubmit={false}
+      acceptShared
       initialDraft={initialDraft}
       initialAttachments={[]}
       submitLabel="Submit claim"

@@ -1,0 +1,30 @@
+diff --git a/node_modules/expo-share-intent/android/src/main/java/expo/modules/shareintent/ExpoShareIntentModule.kt b/node_modules/expo-share-intent/android/src/main/java/expo/modules/shareintent/ExpoShareIntentModule.kt
+index ff5b100..d4f00be 100644
+--- a/node_modules/expo-share-intent/android/src/main/java/expo/modules/shareintent/ExpoShareIntentModule.kt
++++ b/node_modules/expo-share-intent/android/src/main/java/expo/modules/shareintent/ExpoShareIntentModule.kt
+@@ -101,7 +101,9 @@ class ExpoShareIntentModule : Module() {
+ 
+             return mapOf(
+                     "contentUri" to uri.toString(),
+-                    "filePath" to instance?.getAbsolutePath(uri),
++                    // JEP: always copy into the app's cache. A raw storage path (what getAbsolutePath returns for
++                    // file-manager documents) can't be read without storage permission.
++                    "filePath" to (instance?.getDataColumn(uri, null, null) ?: instance?.getAbsolutePath(uri)),
+                     "fileName" to fileName,
+                     "fileSize" to fileSize,
+                     "mimeType" to mimeType,
+@@ -146,6 +148,14 @@ class ExpoShareIntentModule : Module() {
+                     } else {
+                         notifyError("empty uri for file sharing: " + intent.action)
+                     }
++                } else if (intent.action == Intent.ACTION_VIEW) {
++                    // JEP: "Open with" from a file manager, Drive, Gmail...
++                    val uri = intent.data
++                    if (uri != null) {
++                        notifyShareIntent(mapOf( "files" to arrayOf(getFileInfo(uri)), "type" to "file"))
++                    } else {
++                        notifyError("empty uri for file viewing: " + intent.action)
++                    }
+                 } else if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+                     val uris = intent.parcelableArrayList<Uri>(Intent.EXTRA_STREAM)
+                     if (uris != null) {

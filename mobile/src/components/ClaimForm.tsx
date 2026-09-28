@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import {
   extractSuggestionFromText, formatRM, MAX_ATTACHMENTS, parseAmountToCents, validateBank, type AttachmentSuggestion, type BankDetails,
@@ -13,11 +13,13 @@ import { recordPayeeChange, removePayeeSources, type PayeeHistory } from '../cla
 import { recognizeText } from '../claims/ocr';
 import { pickFromCamera, pickFromLibrary, pickPdfs } from '../claims/pickers';
 import { putFile } from '../claims/putFile';
+import { planSharedReceipts } from '../claims/sharedReceipts';
 import { runSplitSubmit, uploadPendingAttachments, type SubmittedGroup } from '../claims/submitFlow';
 import type { AnyAttachment, LocalAttachment } from '../claims/types';
 import { friendlyMessage } from '../lib/api';
 import { api } from '../lib/apiInstance';
 import { newClaimId } from '../lib/firebase';
+import { handoff } from '../share/handoff';
 import { Button } from '../ui/Button';
 import { Screen } from '../ui/Screen';
 import { Section } from '../ui/Section';
@@ -39,6 +41,8 @@ export function ClaimForm(p: {
   /** Shows a discard button while the form has changes; called after they (and new uploads) are thrown away. */
   onDiscarded?: () => void;
   discardLabel?: string;
+  /** Takes receipts shared to the app from other apps (the New claim tab only). */
+  acceptShared?: boolean;
 }) {
   const [draft, setDraft] = useState<ClaimDraft>(p.initialDraft);
   const [attachments, setAttachments] = useState<AnyAttachment[]>(p.initialAttachments);
@@ -221,6 +225,28 @@ export function ClaimForm(p: {
       Alert.alert('Could not add file', friendlyMessage(e));
     }
   };
+
+  /** Receipts shared from another app: one item each (see planSharedReceipts), then read and uploaded as usual. */
+  const addSharedFiles = async (files: LocalAttachment[]) => {
+    const { newItems, receipts, dropped } = planSharedReceipts(draftRef.current.items, attachmentsRef.current, files);
+    if (dropped) Alert.alert('Receipt limit reached', `A claim can have up to ${MAX_ATTACHMENTS} receipts. ${dropped} not added.`);
+    if (receipts.length === 0) return;
+    if (newItems.length) {
+      draftRef.current = { ...draftRef.current, items: [...draftRef.current.items, ...newItems] };
+      setDraft((d) => ({ ...d, items: [...d.items, ...newItems] }));
+    }
+    setActiveKey(receipts[0]!.itemKey!);
+    updateAttachments((a) => [...a, ...receipts]);
+    for (const file of receipts) void analyzeLocally(file);
+    await uploadAndAnalyze(receipts);
+  };
+  // The listener outlives renders; always run the latest handler.
+  const sharedHandler = useRef(addSharedFiles);
+  sharedHandler.current = addSharedFiles;
+  useEffect(() => {
+    if (!p.acceptShared) return;
+    return handoff.listen('claim', (files) => void sharedHandler.current(files));
+  }, [p.acceptShared]);
 
   /** Best effort. For a claim that is never submitted the server's daily cleanup catches anything missed. */
   const discardFromDrive = (fileIds: string[]) => {

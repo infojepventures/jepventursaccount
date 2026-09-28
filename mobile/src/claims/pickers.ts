@@ -3,6 +3,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '@jep/shared';
+import { classifySharedFiles, type IncomingFile } from '../share/handoff';
 import { newKey, type LocalAttachment } from './types';
 
 const MAX_EDGE = 2000;
@@ -73,5 +74,40 @@ export async function pickPdfs(limit: number): Promise<LocalAttachment[]> {
     }
     out.push({ key: newKey(), kind: 'local', uri: a.uri, name: a.name, mimeType: 'application/pdf', size });
   }
+  return out;
+}
+
+/**
+ * Turns files shared from another app into attachments: images re-encoded as JPG (and shrunk like picked
+ * photos), PDFs as they are. Files that can't be attached, or are over 10MB, are skipped with a message.
+ */
+export async function fromSharedFiles(files: IncomingFile[]): Promise<LocalAttachment[]> {
+  const { images, pdfs, unsupported } = classifySharedFiles(files);
+  const skipped = unsupported.map((n) => `${n} (only photos and PDFs)`);
+  const out: LocalAttachment[] = [];
+  for (const f of [...images, ...pdfs]) {
+    const base = (f.fileName ?? 'file').replace(/\.[^.]+$/, '') || 'file';
+    try {
+      if (f.mimeType === 'application/pdf') {
+        const size = f.size ?? (await sizeOf(f.path));
+        if (size > MAX_ATTACHMENT_BYTES) {
+          skipped.push(`${f.fileName ?? 'PDF'} (larger than 10MB)`);
+          continue;
+        }
+        out.push({ key: newKey(), kind: 'local', uri: f.path, name: `${base}.pdf`, mimeType: 'application/pdf', size });
+      } else {
+        const uri = await compressImage({ uri: f.path, width: f.width ?? 0, height: f.height ?? 0 });
+        const size = await sizeOf(uri);
+        if (size > MAX_ATTACHMENT_BYTES) {
+          skipped.push(`${f.fileName ?? 'photo'} (larger than 10MB)`);
+          continue;
+        }
+        out.push({ key: newKey(), kind: 'local', uri, name: `${base}.jpg`, mimeType: 'image/jpeg', size });
+      }
+    } catch {
+      skipped.push(`${f.fileName ?? 'file'} (could not be read)`);
+    }
+  }
+  if (skipped.length) Alert.alert('Some files were not added', skipped.join('\n'));
   return out;
 }

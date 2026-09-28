@@ -3,7 +3,7 @@
     "name": "JEP Claims",
     "slug": "jep-claims",
     "scheme": "jepclaims",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -17,6 +17,24 @@
       "permissions": [
         "CAMERA",
         "REQUEST_INSTALL_PACKAGES"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "category": [
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "scheme": "content",
+              "mimeType": "image/*"
+            },
+            {
+              "scheme": "content",
+              "mimeType": "application/pdf"
+            }
+          ]
+        }
       ]
     },
     "ios": {
@@ -47,7 +65,21 @@
           "color": "#111111"
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": [
+            "image/*",
+            "application/pdf"
+          ],
+          "androidMultiIntentFilters": [
+            "image/*",
+            "application/pdf"
+          ],
+          "disableIOS": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

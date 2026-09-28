@@ -14,6 +14,7 @@ export function ClaimCard({
   disabled,
   onToggle,
   onLongPress,
+  onPress,
 }: {
   claim: ClaimRow;
   showApplicant?: boolean;
@@ -25,6 +26,8 @@ export function ClaimCard({
   onToggle?: () => void;
   /** Long-pressing a card enters select mode and selects it, whether or not it's already selectable. */
   onLongPress?: () => void;
+  /** Replaces opening the claim on tap (when not selecting). */
+  onPress?: () => void;
 }) {
   const router = useRouter();
   const handlePress = () => {
@@ -32,7 +35,8 @@ export function ClaimCard({
       if (!disabled) onToggle?.();
       return;
     }
-    router.push({ pathname: '/claim/[id]', params: { id: claim.id } });
+    if (onPress) onPress();
+    else router.push({ pathname: '/claim/[id]', params: { id: claim.id } });
   };
   return (
     <Pressable

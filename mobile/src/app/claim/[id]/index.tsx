@@ -1,13 +1,15 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { allowedActions, formatRM, formatYmdHms, PDF_STUCK_AFTER_MS } from '@jep/shared';
 import { useAuth } from '../../../auth/AuthProvider';
 import { remoteAttachments } from '../../../claims/draft';
 import { AttachmentList } from '../../../components/AttachmentList';
 import { MarkPaidModal } from '../../../components/MarkPaidModal';
+import type { LocalAttachment } from '../../../claims/types';
 import { useClaim } from '../../../data/useClaims';
 import { buildWhatsAppClaimText } from '../../../files/claimShareText';
+import { handoff } from '../../../share/handoff';
 import { withShortLinks } from '../../../files/shortLinks';
 import { shareTextToWhatsApp } from '../../../files/shareFile';
 import { api } from '../../../lib/apiInstance';
@@ -34,12 +36,26 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 export default function ClaimDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, slip } = useLocalSearchParams<{ id: string; slip?: string }>();
   const router = useRouter();
   const { user, isAdmin } = useAuth();
   const { data: claim, loading } = useClaim(id);
   const [busy, run] = useBusy();
   const [modal, setModal] = useState<'reject' | 'paid' | null>(null);
+  const [sharedSlip, setSharedSlip] = useState<LocalAttachment | null>(null);
+
+  // Opened from "Payment slip" after sharing a file to the app: go straight to Mark as paid with it.
+  useEffect(() => {
+    if (slip !== '1' || !claim) return;
+    const [file] = handoff.take('slip');
+    if (!file) return;
+    if (claim.status === 'approved' && isAdmin) {
+      setSharedSlip(file);
+      setModal('paid');
+    } else {
+      Alert.alert('Cannot mark paid', 'This claim is no longer waiting for payment.');
+    }
+  }, [slip, claim?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <ActivityIndicator style={{ marginTop: space(10) }} color={colors.primary} />;
   if (!claim) return <Screen><Text>Claim not found or you do not have access.</Text></Screen>;
@@ -212,7 +228,15 @@ export default function ClaimDetailScreen() {
           setModal(null);
         }}
       />
-      <MarkPaidModal visible={modal === 'paid'} claimId={claim.id} onClose={() => setModal(null)} />
+      <MarkPaidModal
+        visible={modal === 'paid'}
+        claimId={claim.id}
+        initialFile={sharedSlip}
+        onClose={() => {
+          setModal(null);
+          setSharedSlip(null);
+        }}
+      />
     </>
   );
 }
